@@ -77,10 +77,22 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('android-crypto-ticker/**/*.gradle*', 'android-crypto-ticker/**/libs.versions.toml') }}
           restore-keys: ${{ runner.os }}-gradle-
 
-      - name: Decode keystore
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+      - name: Check signing secrets
+        id: secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android-crypto-ticker/app/release.keystore
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "has_keystore=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_keystore=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Decode keystore
+        if: steps.secrets.outputs.has_keystore == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_B64" | base64 -d > android-crypto-ticker/app/release.keystore
 
       - name: Build release APK
         working-directory: android-crypto-ticker
@@ -88,12 +100,17 @@ jobs:
           SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           SIGNING_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          HAS_KEYSTORE: ${{ steps.secrets.outputs.has_keystore }}
         run: |
-          gradle assembleRelease --no-daemon \
-            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/android-crypto-ticker/app/release.keystore" \
-            -Pandroid.injected.signing.store.password="$SIGNING_STORE_PASSWORD" \
-            -Pandroid.injected.signing.key.alias="$SIGNING_KEY_ALIAS" \
-            -Pandroid.injected.signing.key.password="$SIGNING_KEY_PASSWORD"
+          if [ "$HAS_KEYSTORE" = "true" ]; then
+            gradle assembleRelease --no-daemon \
+              -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/android-crypto-ticker/app/release.keystore" \
+              -Pandroid.injected.signing.store.password="$SIGNING_STORE_PASSWORD" \
+              -Pandroid.injected.signing.key.alias="$SIGNING_KEY_ALIAS" \
+              -Pandroid.injected.signing.key.password="$SIGNING_KEY_PASSWORD"
+          else
+            gradle assembleRelease --no-daemon
+          fi
 
       - name: Upload release APK
         uses: actions/upload-artifact@v4

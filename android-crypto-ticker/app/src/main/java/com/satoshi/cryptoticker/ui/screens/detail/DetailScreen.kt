@@ -83,7 +83,7 @@ fun DetailScreen(
     }
 
     if (showAlertDialog) {
-        AlertDialog(
+        PriceAlertDialog(
             onDismissRequest = { showAlertDialog = false },
             coin = state.coin,
             onConfirm = { price, isAbove ->
@@ -231,7 +231,7 @@ private fun AlertsSection(alerts: List<com.satoshi.cryptoticker.domain.model.Pri
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AlertDialog(
+private fun PriceAlertDialog(
     onDismissRequest: () -> Unit,
     coin: Coin?,
     onConfirm: (Double, Boolean) -> Unit

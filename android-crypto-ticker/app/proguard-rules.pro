@@ -1,0 +1,6 @@
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class com.satoshi.cryptoticker.data.api.dto.** { *; }
+-keep class com.satoshi.cryptoticker.domain.model.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**

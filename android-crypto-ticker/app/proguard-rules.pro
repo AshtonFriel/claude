@@ -2,7 +2,7 @@
 -keepattributes *Annotation*
 -keepattributes EnclosingMethod
 
-# App models — needed for Gson serialization
+# DTOs and domain models — needed for Gson serialization
 -keep class com.satoshi.cryptoticker.data.api.dto.** { *; }
 -keep class com.satoshi.cryptoticker.domain.model.** { *; }
 

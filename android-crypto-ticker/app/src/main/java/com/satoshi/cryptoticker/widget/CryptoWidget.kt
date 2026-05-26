@@ -14,7 +14,6 @@ import androidx.glance.background
 import androidx.glance.layout.*
 import androidx.glance.text.*
 import androidx.glance.unit.ColorProvider
-import com.satoshi.cryptoticker.data.api.CoinGeckoApi
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -28,15 +27,17 @@ class CryptoWidget : GlanceAppWidget() {
                     context.applicationContext,
                     WidgetEntryPoint::class.java
                 )
-                entryPoint.coinGeckoApi()
-                    .getMarkets(ids = "bitcoin,ethereum", sparkline = false)
+                entryPoint.coinCapApi()
+                    .getAssets(ids = "bitcoin,ethereum")
+                    .data
             }.getOrNull()
         }
 
         provideContent {
             WidgetContent(
-                prices?.associate { it.id to (it.currentPrice to (it.priceChangePercentage24h ?: 0.0)) }
-                    ?: emptyMap()
+                prices?.associate { dto ->
+                    dto.id to ((dto.priceUsd?.toDoubleOrNull() ?: 0.0) to (dto.changePercent24Hr?.toDoubleOrNull() ?: 0.0))
+                } ?: emptyMap()
             )
         }
     }

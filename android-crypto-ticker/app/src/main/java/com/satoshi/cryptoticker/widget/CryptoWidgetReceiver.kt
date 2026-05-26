@@ -1,7 +1,7 @@
 package com.satoshi.cryptoticker.widget
 
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
-import com.satoshi.cryptoticker.data.api.CoinGeckoApi
+import com.satoshi.cryptoticker.data.api.CoinCapApi
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -13,5 +13,5 @@ class CryptoWidgetReceiver : GlanceAppWidgetReceiver() {
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface WidgetEntryPoint {
-    fun coinGeckoApi(): CoinGeckoApi
+    fun coinCapApi(): CoinCapApi
 }

@@ -1,6 +1,6 @@
 package com.satoshi.cryptoticker.data.repository
 
-import com.satoshi.cryptoticker.data.api.CoinGeckoApi
+import com.satoshi.cryptoticker.data.api.CoinCapApi
 import com.satoshi.cryptoticker.data.api.FearGreedApi
 import com.satoshi.cryptoticker.data.api.MempoolApi
 import com.satoshi.cryptoticker.data.db.dao.AlertDao
@@ -12,7 +12,7 @@ import com.satoshi.cryptoticker.data.db.entity.WatchlistEntity
 import com.satoshi.cryptoticker.domain.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,7 +24,7 @@ sealed class Result<out T> {
 
 @Singleton
 class CryptoRepository @Inject constructor(
-    private val coinGeckoApi: CoinGeckoApi,
+    private val coinCapApi: CoinCapApi,
     private val mempoolApi: MempoolApi,
     private val fearGreedApi: FearGreedApi,
     private val watchlistDao: WatchlistDao,
@@ -32,6 +32,8 @@ class CryptoRepository @Inject constructor(
     private val portfolioDao: PortfolioDao
 ) {
     private val defaultCoins = listOf("bitcoin", "ethereum", "solana", "litecoin", "monero")
+
+    val watchlistIds = watchlistDao.observeAll().map { it.map { e -> e.coinId } }
 
     private suspend fun <T> withRateLimitRetry(block: suspend () -> T): T {
         var delayMs = 2000L
@@ -52,41 +54,38 @@ class CryptoRepository @Inject constructor(
         throw lastException!!
     }
 
-    val watchlistIds: Flow<List<String>> = watchlistDao.observeAll()
-        .map { entities -> entities.map { it.coinId } }
-
     suspend fun getCoins(ids: List<String>): Result<List<Coin>> = withContext(Dispatchers.IO) {
         runCatching {
             val allIds = (listOf("bitcoin") + ids).distinct()
             val watchedIds = watchlistDao.getAllIds().toSet()
-            withRateLimitRetry { coinGeckoApi.getMarkets(ids = allIds.joinToString(",")) }
-                .sortedWith(compareBy({ if (it.id == "bitcoin") 0 else 1 }, { it.marketCapRank }))
+            withRateLimitRetry { coinCapApi.getAssets(ids = allIds.joinToString(",")) }
+                .data
+                .sortedWith(compareBy({ if (it.id == "bitcoin") 0 else 1 }, { it.rank?.toIntOrNull() ?: Int.MAX_VALUE }))
                 .map { dto ->
                     Coin(
                         id = dto.id,
                         symbol = dto.symbol,
                         name = dto.name,
-                        imageUrl = dto.image,
-                        currentPrice = dto.currentPrice,
-                        marketCap = dto.marketCap,
-                        marketCapRank = dto.marketCapRank,
-                        totalVolume = dto.totalVolume,
-                        priceChangePercent1h = dto.priceChangePercentage1h ?: 0.0,
-                        priceChangePercent24h = dto.priceChangePercentage24h ?: 0.0,
-                        priceChangePercent7d = dto.priceChangePercentage7d ?: 0.0,
-                        circulatingSupply = dto.circulatingSupply ?: 0.0,
-                        maxSupply = dto.maxSupply,
-                        ath = dto.ath ?: 0.0,
-                        atl = dto.atl ?: 0.0,
-                        sparklinePrices = dto.sparkline?.price ?: emptyList(),
+                        imageUrl = "https://assets.coincap.io/assets/icons/${dto.symbol.lowercase()}@2x.png",
+                        currentPrice = dto.priceUsd?.toDoubleOrNull() ?: 0.0,
+                        marketCap = dto.marketCapUsd?.toDoubleOrNull()?.toLong() ?: 0L,
+                        marketCapRank = dto.rank?.toIntOrNull() ?: 0,
+                        totalVolume = dto.volumeUsd24Hr?.toDoubleOrNull()?.toLong() ?: 0L,
+                        priceChangePercent1h = 0.0,
+                        priceChangePercent24h = dto.changePercent24Hr?.toDoubleOrNull() ?: 0.0,
+                        priceChangePercent7d = 0.0,
+                        circulatingSupply = dto.supply?.toDoubleOrNull() ?: 0.0,
+                        maxSupply = dto.maxSupply?.toDoubleOrNull(),
+                        ath = 0.0,
+                        atl = 0.0,
+                        sparklinePrices = emptyList(),
                         isWatched = dto.id in watchedIds
                     )
                 }
         }.fold(
             onSuccess = { Result.Success(it) },
             onFailure = { e ->
-                val isRate = e.message?.contains("429") == true
-                Result.Error(e.message ?: "Unknown error", isRate)
+                Result.Error(e.message ?: "Unknown error", e.message?.contains("429") == true)
             }
         )
     }
@@ -94,8 +93,16 @@ class CryptoRepository @Inject constructor(
     suspend fun getMarketChart(coinId: String, days: Int): Result<List<Pair<Long, Double>>> =
         withContext(Dispatchers.IO) {
             runCatching {
-                withRateLimitRetry { coinGeckoApi.getMarketChart(coinId, days = days) }
-                    .prices.map { it[0].toLong() to it[1] }
+                val end = System.currentTimeMillis()
+                val start = end - days.toLong() * 24 * 60 * 60 * 1000
+                val interval = when {
+                    days <= 7 -> "h1"
+                    days <= 30 -> "h6"
+                    else -> "d1"
+                }
+                withRateLimitRetry {
+                    coinCapApi.getHistory(coinId, interval = interval, start = start, end = end)
+                }.data.map { it.time to (it.priceUsd.toDoubleOrNull() ?: 0.0) }
             }.fold(
                 onSuccess = { Result.Success(it) },
                 onFailure = { Result.Error(it.message ?: "Chart error") }
@@ -104,8 +111,6 @@ class CryptoRepository @Inject constructor(
 
     suspend fun getBitcoinStats(): Result<BitcoinStats> = withContext(Dispatchers.IO) {
         runCatching {
-            val global = coinGeckoApi.getGlobal()
-            val dominance = global.data.marketCapPercentage["btc"] ?: 0.0
             val blockHeight = mempoolApi.getBlockHeight()
             val halvingInterval = 210_000L
             val nextHalving = ((blockHeight / halvingInterval) + 1) * halvingInterval
@@ -127,7 +132,7 @@ class CryptoRepository @Inject constructor(
             }.getOrNull()
 
             BitcoinStats(
-                dominancePercent = dominance,
+                dominancePercent = null,
                 blockHeight = blockHeight,
                 blocksUntilHalving = blocksUntilHalving,
                 estimatedHalvingDays = blocksUntilHalving / 144,
@@ -143,8 +148,14 @@ class CryptoRepository @Inject constructor(
 
     suspend fun searchCoins(query: String): Result<List<SearchCoin>> = withContext(Dispatchers.IO) {
         runCatching {
-            coinGeckoApi.search(query).coins.map {
-                SearchCoin(it.id, it.name, it.symbol, it.marketCapRank, it.thumb)
+            coinCapApi.searchAssets(query).data.map {
+                SearchCoin(
+                    id = it.id,
+                    name = it.name,
+                    symbol = it.symbol,
+                    marketCapRank = it.rank?.toIntOrNull(),
+                    thumbUrl = "https://assets.coincap.io/assets/icons/${it.symbol.lowercase()}@2x.png"
+                )
             }
         }.fold(
             onSuccess = { Result.Success(it) },
@@ -173,8 +184,7 @@ class CryptoRepository @Inject constructor(
     suspend fun checkAndTriggerAlerts(prices: Map<String, Double>): List<AlertEntity> {
         val triggered = mutableListOf<AlertEntity>()
         prices.forEach { (coinId, price) ->
-            val alerts = alertDao.getActiveForCoin(coinId)
-            alerts.forEach { alert ->
+            alertDao.getActiveForCoin(coinId).forEach { alert ->
                 val hit = if (alert.isAbove) price >= alert.targetPrice else price <= alert.targetPrice
                 if (hit) {
                     alertDao.markTriggered(alert.id)

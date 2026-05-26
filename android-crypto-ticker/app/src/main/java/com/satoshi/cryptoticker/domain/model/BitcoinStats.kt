@@ -1,7 +1,7 @@
 package com.satoshi.cryptoticker.domain.model
 
 data class BitcoinStats(
-    val dominancePercent: Double,
+    val dominancePercent: Double?,
     val blockHeight: Long,
     val blocksUntilHalving: Long,
     val estimatedHalvingDays: Long,

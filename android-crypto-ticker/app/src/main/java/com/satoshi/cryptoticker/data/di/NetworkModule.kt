@@ -2,7 +2,7 @@ package com.satoshi.cryptoticker.data.di
 
 import android.content.Context
 import com.satoshi.cryptoticker.BuildConfig
-import com.satoshi.cryptoticker.data.api.CoinGeckoApi
+import com.satoshi.cryptoticker.data.api.CoinCapApi
 import com.satoshi.cryptoticker.data.api.FearGreedApi
 import com.satoshi.cryptoticker.data.api.MempoolApi
 import dagger.Module
@@ -43,13 +43,13 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideCoinGeckoApi(client: OkHttpClient): CoinGeckoApi =
+    fun provideCoinCapApi(client: OkHttpClient): CoinCapApi =
         Retrofit.Builder()
-            .baseUrl("https://api.coingecko.com/api/v3/")
+            .baseUrl("https://api.coincap.io/v2/")
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(CoinGeckoApi::class.java)
+            .create(CoinCapApi::class.java)
 
     @Provides
     @Singleton

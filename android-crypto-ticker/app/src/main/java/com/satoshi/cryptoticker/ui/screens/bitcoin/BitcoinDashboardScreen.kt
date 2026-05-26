@@ -148,7 +148,7 @@ private fun BitcoinStatsSection(stats: BitcoinStats) {
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Text("Bitcoin Stats", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard("BTC Dominance", "${String.format("%.1f", stats.dominancePercent)}%", modifier = Modifier.weight(1f), valueColor = Bitcoin)
+            StatCard("BTC Dominance", stats.dominancePercent?.let { "${String.format("%.1f", it)}%" } ?: "—", modifier = Modifier.weight(1f), valueColor = Bitcoin)
             StatCard("Block Height", "%,d".format(stats.blockHeight), modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))

@@ -6,7 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.material3.pulltorefresh.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,23 +29,22 @@ fun BitcoinDashboardScreen(
     vm: BitcoinViewModel = hiltViewModel()
 ) {
     val state by vm.state.collectAsState()
-    val pullRefreshState = rememberPullToRefreshState()
+    var isRefreshing by remember { mutableStateOf(false) }
 
-    if (pullRefreshState.isRefreshing) {
-        LaunchedEffect(Unit) { vm.load() }
-    }
     LaunchedEffect(state.isLoading) {
-        if (!state.isLoading) pullRefreshState.endRefresh()
+        if (!state.isLoading) isRefreshing = false
     }
 
-    Box(Modifier.fillMaxSize()) {
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = { isRefreshing = true; vm.load() },
+        modifier = Modifier.fillMaxSize()
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .nestedScroll(pullRefreshState.nestedScrollConnection)
         ) {
-            // Header
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -73,21 +72,13 @@ fun BitcoinDashboardScreen(
                     modifier = Modifier.fillMaxWidth().height(200.dp)
                 )
             } else {
-                state.btc?.let { btc ->
-                    BitcoinPriceHero(btc, onClick = { onCoinClick("bitcoin") })
-                }
-                state.stats?.let { stats ->
-                    BitcoinStatsSection(stats)
-                }
-                state.btc?.let { btc ->
-                    SparklineSection(btc)
-                }
+                state.btc?.let { btc -> BitcoinPriceHero(btc, onClick = { onCoinClick("bitcoin") }) }
+                state.stats?.let { stats -> BitcoinStatsSection(stats) }
+                state.btc?.let { btc -> SparklineSection(btc) }
             }
 
             Spacer(Modifier.height(16.dp))
         }
-
-        PullToRefreshContainer(state = pullRefreshState, modifier = Modifier.align(Alignment.TopCenter))
     }
 }
 
@@ -141,14 +132,13 @@ private fun ChangeBadge(change: Double, large: Boolean = false) {
 
 @Composable
 private fun MiniStat(label: String, change: Double) {
-    val isGain = change >= 0
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
             change.formatPercent(),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
-            color = if (isGain) GainGreen else LossRed
+            color = if (change >= 0) GainGreen else LossRed
         )
     }
 }
@@ -157,20 +147,9 @@ private fun MiniStat(label: String, change: Double) {
 private fun BitcoinStatsSection(stats: BitcoinStats) {
     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
         Text("Bitcoin Stats", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 12.dp))
-
-        // Dominance + Halving
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            StatCard(
-                label = "BTC Dominance",
-                value = "${String.format("%.1f", stats.dominancePercent)}%",
-                modifier = Modifier.weight(1f),
-                valueColor = Bitcoin
-            )
-            StatCard(
-                label = "Block Height",
-                value = "%,d".format(stats.blockHeight),
-                modifier = Modifier.weight(1f)
-            )
+            StatCard("BTC Dominance", "${String.format("%.1f", stats.dominancePercent)}%", modifier = Modifier.weight(1f), valueColor = Bitcoin)
+            StatCard("Block Height", "%,d".format(stats.blockHeight), modifier = Modifier.weight(1f))
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -183,10 +162,9 @@ private fun BitcoinStatsSection(stats: BitcoinStats) {
             )
             stats.fearGreed?.let { fg ->
                 FearGreedCard(fg, Modifier.weight(1f))
-            } ?: StatCard(label = "Fear & Greed", value = "—", modifier = Modifier.weight(1f))
+            } ?: StatCard("Fear & Greed", "—", modifier = Modifier.weight(1f))
         }
 
-        // Mempool fees
         stats.fees?.let { fees ->
             Spacer(Modifier.height(16.dp))
             Text("Mempool Fee Estimates (sat/vB)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
@@ -198,7 +176,6 @@ private fun BitcoinStatsSection(stats: BitcoinStats) {
             }
         }
 
-        // Lightning
         stats.lightning?.let { ln ->
             Spacer(Modifier.height(16.dp))
             Text("Lightning Network", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(bottom = 8.dp))
@@ -220,21 +197,13 @@ private fun FearGreedCard(fg: FearGreedIndex, modifier: Modifier) {
         fg.value >= 25 -> Color(0xFFFF9800)
         else -> LossRed
     }
-    StatCard(
-        label = "Fear & Greed",
-        value = "${fg.value} — ${fg.classification}",
-        modifier = modifier,
-        valueColor = color
-    )
+    StatCard("Fear & Greed", "${fg.value} — ${fg.classification}", modifier = modifier, valueColor = color)
 }
 
 @Composable
 private fun FeeChip(label: String, value: Int, modifier: Modifier = Modifier) {
     Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = modifier) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(8.dp)
-        ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(8.dp)) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("$value", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Bitcoin)
         }

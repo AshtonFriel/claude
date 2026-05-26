@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
 import com.patrykandpatrick.vico.compose.chart.Chart
 import com.patrykandpatrick.vico.compose.chart.line.lineChart
@@ -38,7 +39,7 @@ fun PriceChart(
         chart = lineChart(
             lines = listOf(
                 LineChart.LineSpec(
-                    lineColor = lineColor.hashCode(),
+                    lineColor = lineColor.toArgb(),
                     lineBackgroundShader = DynamicShaders.fromBrush(
                         androidx.compose.ui.graphics.Brush.verticalGradient(
                             listOf(lineColor.copy(alpha = 0.35f), Color.Transparent)

@@ -11,6 +11,7 @@ import com.satoshi.cryptoticker.data.db.entity.PortfolioEntity
 import com.satoshi.cryptoticker.data.db.entity.WatchlistEntity
 import com.satoshi.cryptoticker.domain.model.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -30,8 +31,26 @@ class CryptoRepository @Inject constructor(
     private val alertDao: AlertDao,
     private val portfolioDao: PortfolioDao
 ) {
-    // Always include BTC; merge with user watchlist
     private val defaultCoins = listOf("bitcoin", "ethereum", "solana", "litecoin", "monero")
+
+    private suspend fun <T> withRateLimitRetry(block: suspend () -> T): T {
+        var delayMs = 2000L
+        var lastException: Exception? = null
+        repeat(3) { attempt ->
+            try {
+                return block()
+            } catch (e: Exception) {
+                lastException = e
+                if (e.message?.contains("429") == true && attempt < 2) {
+                    delay(delayMs)
+                    delayMs *= 2
+                } else {
+                    throw e
+                }
+            }
+        }
+        throw lastException!!
+    }
 
     val watchlistIds: Flow<List<String>> = watchlistDao.observeAll()
         .map { entities -> entities.map { it.coinId } }
@@ -40,7 +59,7 @@ class CryptoRepository @Inject constructor(
         runCatching {
             val allIds = (listOf("bitcoin") + ids).distinct()
             val watchedIds = watchlistDao.getAllIds().toSet()
-            coinGeckoApi.getMarkets(ids = allIds.joinToString(","))
+            withRateLimitRetry { coinGeckoApi.getMarkets(ids = allIds.joinToString(",")) }
                 .sortedWith(compareBy({ if (it.id == "bitcoin") 0 else 1 }, { it.marketCapRank }))
                 .map { dto ->
                     Coin(
@@ -75,7 +94,7 @@ class CryptoRepository @Inject constructor(
     suspend fun getMarketChart(coinId: String, days: Int): Result<List<Pair<Long, Double>>> =
         withContext(Dispatchers.IO) {
             runCatching {
-                coinGeckoApi.getMarketChart(coinId, days = days)
+                withRateLimitRetry { coinGeckoApi.getMarketChart(coinId, days = days) }
                     .prices.map { it[0].toLong() to it[1] }
             }.fold(
                 onSuccess = { Result.Success(it) },

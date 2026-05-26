@@ -45,7 +45,14 @@ jobs:
 
       - name: Build debug APK
         working-directory: android-crypto-ticker
-        run: ./gradlew assembleDebug --no-daemon --stacktrace --info 2>&1 | tail -150
+        run: |
+          ./gradlew assembleDebug --no-daemon --stacktrace > /tmp/build.log 2>&1 || {
+            echo "=== Kotlin/AAPT errors ==="
+            grep -E "^e: |error: |^> " /tmp/build.log | head -60
+            echo "=== Last 30 lines ==="
+            tail -30 /tmp/build.log
+            exit 1
+          }
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

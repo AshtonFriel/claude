@@ -3,7 +3,10 @@
 A retro pseudo-3D racing game blending **Mario Kart**, **Splatoon**, and **F-Zero** —
 all in a single dependency-free HTML file.
 
-**Play it:** just open `index.html` in any browser.
+**Play it:** just open `index.html` in any browser — desktop or mobile.
+On touch screens the game switches to on-screen controls automatically
+(auto-accelerate, steer arrows, INK / BST / DRIFT buttons). For a native
+Android build, see [`../ink-zero-gp-android`](../ink-zero-gp-android).
 
 ## The blend
 
@@ -25,6 +28,9 @@ all in a single dependency-free HTML file.
 | `X` / `Ctrl` | Boost (drains energy meter) |
 | `M` | Mute |
 | `Enter` | Start / rematch |
+
+On touch devices: tap to start, the kart accelerates by itself, and you get
+◀ ▶ steering buttons plus INK (fire), BST (boost) and DRIFT buttons.
 
 ## Tips
 

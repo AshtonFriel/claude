@@ -14,6 +14,9 @@
   canvas {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
     width: 100vw;
     height: calc(100vw * 9 / 16);
     max-height: 100vh;
@@ -415,6 +418,39 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 
+// --- touch controls (mobile / Android) ---
+let touchMode = false;
+const vk = { left: false, right: false, fire: false, boost: false, drift: false };
+const BTNS = {
+  left:  { x: 36,  y: 230, r: 26 },
+  right: { x: 102, y: 230, r: 26 },
+  boost: { x: 374, y: 238, r: 19 },
+  fire:  { x: 442, y: 228, r: 26 },
+  drift: { x: 442, y: 172, r: 19 },
+};
+function handleTouches(e) {
+  e.preventDefault();
+  touchMode = true;
+  audioInit();
+  if (AC && AC.state === 'suspended') AC.resume();
+  for (const k in vk) vk[k] = false;
+  const rect = canvas.getBoundingClientRect();
+  for (const t of e.touches) {
+    const x = (t.clientX - rect.left) * W / rect.width;
+    const y = (t.clientY - rect.top) * H / rect.height;
+    let best = null, bd = 1e9;
+    for (const name in BTNS) {
+      const b = BTNS[name];
+      const d = dist2(x, y, b.x, b.y);
+      if (d < b.r * b.r * 2.9 && d < bd) { bd = d; best = name; }
+    }
+    if (best) vk[best] = true;
+  }
+  if (e.type === 'touchstart' && (state === 'title' || (state === 'finished' && stateT > 1.5))) startRace();
+}
+for (const ev of ['touchstart', 'touchmove', 'touchend', 'touchcancel'])
+  canvas.addEventListener(ev, handleTouches, { passive: false });
+
 let state = 'title';   // title | countdown | race | finished
 let stateT = 0;        // time in current state
 let raceT = 0;         // race clock
@@ -555,12 +591,12 @@ function updateKart(k, dt) {
     k.aiShotT -= dt;
     if (k.aiShotT <= 0) { fireBlob(k); k.aiShotT = rand(2.2, 5); }
   } else if (state === 'race') {
-    throttle = (keys['arrowup'] || keys['w']) ? 1 : 0;
+    throttle = (keys['arrowup'] || keys['w'] || touchMode) ? 1 : 0; // touch = auto-gas
     if (keys['arrowdown'] || keys['s']) throttle = -1;
-    steer = ((keys['arrowright'] || keys['d']) ? 1 : 0) - ((keys['arrowleft'] || keys['a']) ? 1 : 0);
-    wantDrift = keys['shift'];
-    wantBoost = keys['x'] || keys['control'];
-    wantFire = keys[' '];
+    steer = ((keys['arrowright'] || keys['d'] || vk.right) ? 1 : 0) - ((keys['arrowleft'] || keys['a'] || vk.left) ? 1 : 0);
+    wantDrift = keys['shift'] || vk.drift;
+    wantBoost = keys['x'] || keys['control'] || vk.boost;
+    wantFire = keys[' '] || vk.fire;
   }
 
   // --- drift & mini-turbo (Mario Kart) ---
@@ -839,7 +875,7 @@ function renderSprites(camX, camY, camA) {
 function renderPlayerKart() {
   const k = player;
   const px = W / 2, py = 236;
-  const steer = ((keys['arrowright'] || keys['d']) ? 1 : 0) - ((keys['arrowleft'] || keys['a']) ? 1 : 0);
+  const steer = ((keys['arrowright'] || keys['d'] || vk.right) ? 1 : 0) - ((keys['arrowleft'] || keys['a'] || vk.left) ? 1 : 0);
   ctx.save();
   ctx.translate(px, py);
   if (k.spin > 0) ctx.rotate(k.spin * 12);
@@ -921,12 +957,45 @@ function renderHUD() {
   ctx.fillText(fmtTime(raceT), W - 8, 6);
   // speed
   ctx.fillStyle = player.boosting || player.padT > 0 ? '#7ef7ff' : '#ffffff';
-  ctx.font = 'bold 14px monospace';
-  ctx.fillText(((player.speed * 1.6) | 0) + ' km/h', W - 8, H - 20);
+  if (touchMode) {
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText(((player.speed * 1.6) | 0) + ' km/h', W / 2, H - 14);
+  } else {
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(((player.speed * 1.6) | 0) + ' km/h', W - 8, H - 20);
+  }
   ctx.textAlign = 'left';
-  // meters
-  bar(8, H - 14, 90, 6, player.ink / 100, TEAMS[1].ink, 'INK');
-  bar(8, H - 32, 90, 6, player.energy / 100, '#39e6ff', 'BOOST');
+  // meters (moved up in touch mode to clear the on-screen buttons)
+  bar(8, touchMode ? 64 : H - 14, 90, 6, player.ink / 100, TEAMS[1].ink, 'INK');
+  bar(8, touchMode ? 48 : H - 32, 90, 6, player.energy / 100, '#39e6ff', 'BOOST');
+  // touch buttons
+  if (touchMode) {
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const name in BTNS) {
+      const b = BTNS[name];
+      ctx.fillStyle = vk[name] ? 'rgba(255,255,255,0.38)' : 'rgba(255,255,255,0.13)';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.lineWidth = 1; ctx.stroke();
+      if (name === 'left' || name === 'right') {
+        const d = name === 'left' ? -1 : 1;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.moveTo(b.x + d * 9, b.y);
+        ctx.lineTo(b.x - d * 5, b.y - 9);
+        ctx.lineTo(b.x - d * 5, b.y + 9);
+        ctx.closePath(); ctx.fill();
+      } else {
+        ctx.fillStyle = name === 'fire' ? TEAMS[1].ink : (name === 'boost' ? '#39e6ff' : '#ffffff');
+        ctx.fillText(name === 'fire' ? 'INK' : (name === 'boost' ? 'BST' : 'DRIFT'), b.x, b.y);
+      }
+    }
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';
+  }
   // turf meter (Splatoon-style share bar)
   const total = Math.max(1, inkCounts[1] + inkCounts[2] + inkCounts[3] + inkCounts[4]);
   let tx = W / 2 - 60;
@@ -992,7 +1061,7 @@ function renderTitle() {
   if ((performance.now() / 500 | 0) % 2) {
     ctx.font = 'bold 13px monospace';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText('PRESS ENTER', W / 2, 216);
+    ctx.fillText(touchMode ? 'TAP TO START' : 'PRESS ENTER', W / 2, 216);
   }
   ctx.textAlign = 'left';
 }
@@ -1027,7 +1096,7 @@ function renderResults() {
   if ((performance.now() / 500 | 0) % 2) {
     ctx.font = 'bold 12px monospace';
     ctx.fillStyle = '#ffffff';
-    ctx.fillText('ENTER = REMATCH', W / 2, 190);
+    ctx.fillText(touchMode ? 'TAP = REMATCH' : 'ENTER = REMATCH', W / 2, 190);
   }
   ctx.textAlign = 'left';
 }

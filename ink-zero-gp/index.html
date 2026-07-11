@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>INK-ZERO GP</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #05030f;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    width: 100vw;
+    height: calc(100vw * 9 / 16);
+    max-height: 100vh;
+    max-width: calc(100vh * 16 / 9);
+  }
+</style>
+</head>
+<body>
+<canvas id="game" width="480" height="270"></canvas>
+<script>
+'use strict';
+
+// ============================================================
+// INK-ZERO GP
+// Mario Kart x Splatoon x F-Zero, in one file.
+// Mode-7 pseudo-3D racer: paint the track with your ink to go
+// faster, splat rivals to spin them out, manage boost energy.
+// ============================================================
+
+const W = 480, H = 270;          // internal render resolution
+const HOR = 104;                 // horizon scanline
+const FOCAL = 300;               // camera focal length
+const CAMH = 48;                 // camera height above ground
+const WORLD = 2048;              // world texture is WORLD x WORLD
+const CELL = 8;                  // ink-logic grid cell size in px
+const GRID = WORLD / CELL;       // 256
+const LAPS = 4;
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
+const dist2 = (ax, ay, bx, by) => (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
+const angDiff = (a, b) => { let d = (a - b) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
+const u32 = (r, g, b) => (255 << 24) | (b << 16) | (g << 8) | r;
+
+const TEAMS = [
+  null, // grid owner 0 = unpainted
+  { name: 'YOU',   body: '#ff8a2a', ink: '#ff7a1a', inkU: u32(0xff, 0x7a, 0x1a) },
+  { name: 'AZURE', body: '#22ccff', ink: '#18b6ef', inkU: u32(0x18, 0xb6, 0xef) },
+  { name: 'VIPER', body: '#8dff33', ink: '#6fdd1d', inkU: u32(0x6f, 0xdd, 0x1d) },
+  { name: 'NOVA',  body: '#ff44cc', ink: '#ee2fb4', inkU: u32(0xee, 0x2f, 0xb4) },
+];
+
+// ============================================================
+// Track generation
+// ============================================================
+
+const CONTROL = [
+  [420, 330], [1030, 230], [1600, 330], [1810, 720],
+  [1560, 1080], [1780, 1470], [1330, 1800], [790, 1740],
+  [400, 1490], [250, 980],
+];
+
+// Catmull-Rom sample of the closed control loop -> fine points
+const FINE_N = 256;
+const fine = [];
+{
+  const n = CONTROL.length;
+  const per = FINE_N / n;
+  for (let i = 0; i < n; i++) {
+    const p0 = CONTROL[(i + n - 1) % n], p1 = CONTROL[i],
+          p2 = CONTROL[(i + 1) % n], p3 = CONTROL[(i + 2) % n];
+    for (let j = 0; j < per; j++) {
+      const t = j / per, t2 = t * t, t3 = t2 * t;
+      fine.push([
+        0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3),
+      ]);
+    }
+  }
+}
+
+// Coarse waypoints for lap/progress logic
+const WP_N = 64;
+const wps = [];
+for (let i = 0; i < WP_N; i++) wps.push(fine[(i * FINE_N / WP_N) | 0]);
+const wpDir = [];
+for (let i = 0; i < WP_N; i++) {
+  const a = wps[i], b = wps[(i + 1) % WP_N];
+  const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  wpDir.push([(b[0] - a[0]) / l, (b[1] - a[1]) / l]);
+}
+
+const ROAD_W = 168;
+
+function tracePath(c) {
+  c.beginPath();
+  c.moveTo(fine[0][0], fine[0][1]);
+  for (let i = 1; i < FINE_N; i++) c.lineTo(fine[i][0], fine[i][1]);
+  c.closePath();
+}
+
+function makeCanvas(w, h) {
+  const cv = document.createElement('canvas');
+  cv.width = w; cv.height = h;
+  return cv;
+}
+
+// --- base track texture ---
+const trackCv = makeCanvas(WORLD, WORLD);
+const maskCv = makeCanvas(WORLD, WORLD);   // white = road (used to clip ink)
+{
+  const c = trackCv.getContext('2d');
+  // synthwave void: dark purple with a faint grid
+  c.fillStyle = '#0b0618';
+  c.fillRect(0, 0, WORLD, WORLD);
+  c.strokeStyle = '#1c1038';
+  c.lineWidth = 2;
+  for (let i = 0; i <= WORLD; i += 64) {
+    c.beginPath(); c.moveTo(i, 0); c.lineTo(i, WORLD); c.stroke();
+    c.beginPath(); c.moveTo(0, i); c.lineTo(WORLD, i); c.stroke();
+  }
+  c.lineJoin = c.lineCap = 'round';
+  // glow edge
+  tracePath(c); c.strokeStyle = '#20e0ff'; c.lineWidth = ROAD_W + 14; c.stroke();
+  tracePath(c); c.strokeStyle = '#0a5a86'; c.lineWidth = ROAD_W + 6; c.stroke();
+  // asphalt
+  tracePath(c); c.strokeStyle = '#181a30'; c.lineWidth = ROAD_W; c.stroke();
+  // center dashes
+  tracePath(c); c.strokeStyle = '#3a4066'; c.lineWidth = 5;
+  c.setLineDash([26, 30]); c.stroke(); c.setLineDash([]);
+
+  const m = maskCv.getContext('2d');
+  m.lineJoin = m.lineCap = 'round';
+  tracePath(m); m.strokeStyle = '#fff'; m.lineWidth = ROAD_W + 8; m.stroke();
+}
+
+// --- boost pads (F-Zero) ---
+const pads = [];
+{
+  const c = trackCv.getContext('2d');
+  const padWps = [7, 17, 27, 38, 48, 58];
+  for (const i of padWps) {
+    const [x, y] = wps[i];
+    const [dx, dy] = wpDir[i];
+    const a = Math.atan2(dy, dx);
+    pads.push({ x, y, a });
+    c.save();
+    c.translate(x, y); c.rotate(a);
+    c.fillStyle = '#ffd23a';
+    for (let k = -1; k <= 1; k++) {
+      c.beginPath();
+      c.moveTo(k * 22 - 10, -26); c.lineTo(k * 22 + 12, 0); c.lineTo(k * 22 - 10, 26);
+      c.lineTo(k * 22 - 2, 26); c.lineTo(k * 22 + 20, 0); c.lineTo(k * 22 - 2, -26);
+      c.closePath(); c.fill();
+    }
+    c.restore();
+  }
+  // start / finish line (checkers)
+  const [sx, sy] = wps[0];
+  const a = Math.atan2(wpDir[0][1], wpDir[0][0]);
+  c.save();
+  c.translate(sx, sy); c.rotate(a);
+  for (let row = 0; row < 3; row++)
+    for (let k = -7; k < 7; k++) {
+      c.fillStyle = (k + row) % 2 ? '#e8e8f0' : '#14141c';
+      c.fillRect(row * 12 - 18, k * 12, 12, 12);
+    }
+  c.restore();
+}
+
+// --- ink layer + scratch canvases ---
+const inkCv = makeCanvas(WORLD, WORLD);
+const inkCtx = inkCv.getContext('2d');
+const scratchCv = makeCanvas(280, 280);          // splat compositing
+const scratchCtx = scratchCv.getContext('2d');
+const mixCv = makeCanvas(280, 280);              // track+ink merge for sampler
+const mixCtx = mixCv.getContext('2d');
+
+// --- world sampler texture (track + ink baked into a Uint32 array) ---
+let baseU32, worldU32;
+{
+  const img = trackCv.getContext('2d').getImageData(0, 0, WORLD, WORLD);
+  baseU32 = new Uint32Array(img.data.buffer.slice(0));
+  worldU32 = baseU32.slice();
+}
+
+// --- ink ownership grid ---
+const trackGrid = new Uint8Array(GRID * GRID);   // 1 = road cell
+const inkGrid = new Uint8Array(GRID * GRID);     // 0 none, 1..4 team
+let roadCells = 0;
+const inkCounts = [0, 0, 0, 0, 0];
+{
+  // a cell is road if its center is within ROAD_W/2 of the centerline
+  const r2 = (ROAD_W / 2 + 4) ** 2;
+  for (let gy = 0; gy < GRID; gy++)
+    for (let gx = 0; gx < GRID; gx++) {
+      const px = gx * CELL + CELL / 2, py = gy * CELL + CELL / 2;
+      for (let i = 0; i < FINE_N; i += 2) {
+        if (dist2(px, py, fine[i][0], fine[i][1]) < r2) {
+          trackGrid[gy * GRID + gx] = 1;
+          roadCells++;
+          break;
+        }
+      }
+    }
+}
+
+// Paint a splat: ink canvas (clipped to road), sampler texture, logic grid.
+function splat(x, y, r, team) {
+  const pad = r * 1.7;
+  const dx = clamp((x - pad) | 0, 0, WORLD - 1), dy = clamp((y - pad) | 0, 0, WORLD - 1);
+  const dw = Math.min((pad * 2) | 0, WORLD - dx), dh = Math.min((pad * 2) | 0, WORLD - dy);
+  if (dw <= 0 || dh <= 0) return;
+
+  // blobby splat in scratch, clipped by road mask, stamped onto ink layer
+  scratchCtx.clearRect(0, 0, dw, dh);
+  scratchCtx.fillStyle = TEAMS[team].ink;
+  const lx = x - dx, ly = y - dy;
+  scratchCtx.beginPath();
+  scratchCtx.arc(lx, ly, r, 0, TAU);
+  for (let i = 0; i < 4; i++) {
+    const a = rand(0, TAU), d = rand(r * 0.5, r * 1.3);
+    scratchCtx.moveTo(lx + Math.cos(a) * d, ly + Math.sin(a) * d);
+    scratchCtx.arc(lx + Math.cos(a) * d, ly + Math.sin(a) * d, rand(r * 0.2, r * 0.45), 0, TAU);
+  }
+  scratchCtx.fill();
+  scratchCtx.globalCompositeOperation = 'destination-in';
+  scratchCtx.drawImage(maskCv, dx, dy, dw, dh, 0, 0, dw, dh);
+  scratchCtx.globalCompositeOperation = 'source-over';
+  inkCtx.drawImage(scratchCv, 0, 0, dw, dh, dx, dy, dw, dh);
+
+  // rebake the dirty rect of the sampler texture
+  mixCtx.drawImage(trackCv, dx, dy, dw, dh, 0, 0, dw, dh);
+  mixCtx.drawImage(inkCv, dx, dy, dw, dh, 0, 0, dw, dh);
+  const img = mixCtx.getImageData(0, 0, dw, dh);
+  const src = new Uint32Array(img.data.buffer);
+  for (let row = 0; row < dh; row++) {
+    const wOff = (dy + row) * WORLD + dx, sOff = row * dw;
+    for (let col = 0; col < dw; col++) worldU32[wOff + col] = src[sOff + col];
+  }
+
+  // ownership grid + turf counts
+  const gr = Math.max(1, (r / CELL) | 0);
+  const gx0 = clamp((x / CELL - gr) | 0, 0, GRID - 1), gx1 = clamp((x / CELL + gr) | 0, 0, GRID - 1);
+  const gy0 = clamp((y / CELL - gr) | 0, 0, GRID - 1), gy1 = clamp((y / CELL + gr) | 0, 0, GRID - 1);
+  const cr2 = (r / CELL) * (r / CELL);
+  for (let gy = gy0; gy <= gy1; gy++)
+    for (let gx = gx0; gx <= gx1; gx++) {
+      const idx = gy * GRID + gx;
+      if (!trackGrid[idx]) continue;
+      if (dist2(gx + 0.5, gy + 0.5, x / CELL, y / CELL) > cr2) continue;
+      const old = inkGrid[idx];
+      if (old === team) continue;
+      if (old) inkCounts[old]--;
+      inkCounts[team]++;
+      inkGrid[idx] = team;
+    }
+}
+
+function inkAt(x, y) {
+  const gx = (x / CELL) | 0, gy = (y / CELL) | 0;
+  if (gx < 0 || gy < 0 || gx >= GRID || gy >= GRID) return -1;
+  const idx = gy * GRID + gx;
+  if (!trackGrid[idx]) return -1;   // off road
+  return inkGrid[idx];              // 0 = clean road
+}
+
+// ============================================================
+// Sprites (16 yaw rotations per team, drawn procedurally)
+// ============================================================
+
+const SPR = 48, SPR_N = 16;
+function makeKartSheet(teamIdx) {
+  const cv = makeCanvas(SPR * SPR_N, SPR);
+  const c = cv.getContext('2d');
+  const t = TEAMS[teamIdx];
+  for (let f = 0; f < SPR_N; f++) {
+    c.save();
+    c.translate(f * SPR + SPR / 2, SPR / 2);
+    c.rotate((f / SPR_N) * TAU);
+    c.scale(1, 0.82); // slight perspective squash
+    // hover glow
+    c.fillStyle = 'rgba(60,220,255,0.25)';
+    c.beginPath(); c.ellipse(0, 0, 13, 17, 0, 0, TAU); c.fill();
+    // hull (nose points up / -y at rotation 0)
+    c.fillStyle = t.body;
+    c.beginPath();
+    c.moveTo(0, -17); c.lineTo(9, -2); c.lineTo(11, 12); c.lineTo(4, 15);
+    c.lineTo(-4, 15); c.lineTo(-11, 12); c.lineTo(-9, -2);
+    c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,0.5)'; c.lineWidth = 1.5; c.stroke();
+    // cockpit
+    c.fillStyle = '#101426';
+    c.beginPath(); c.ellipse(0, -3, 4.5, 7, 0, 0, TAU); c.fill();
+    c.fillStyle = '#9fdcff';
+    c.beginPath(); c.ellipse(0, -5.5, 3, 3.5, 0, 0, TAU); c.fill();
+    // ink tank on the back
+    c.fillStyle = t.ink;
+    c.beginPath(); c.ellipse(0, 10, 5, 4, 0, 0, TAU); c.fill();
+    // thrusters
+    c.fillStyle = '#232742';
+    c.fillRect(-11, 8, 5, 7); c.fillRect(6, 8, 5, 7);
+    c.fillStyle = '#7ef7ff';
+    c.fillRect(-10, 13, 3, 3); c.fillRect(7, 13, 3, 3);
+    c.restore();
+  }
+  return cv;
+}
+const kartSheets = [null, makeKartSheet(1), makeKartSheet(2), makeKartSheet(3), makeKartSheet(4)];
+
+// ============================================================
+// Sky (parallax panorama, drawn once)
+// ============================================================
+
+const SKY_W = 960;
+const skyCv = makeCanvas(SKY_W, HOR);
+{
+  const c = skyCv.getContext('2d');
+  const g = c.createLinearGradient(0, 0, 0, HOR);
+  g.addColorStop(0, '#04020e');
+  g.addColorStop(0.55, '#1c0b3f');
+  g.addColorStop(0.85, '#55206b');
+  g.addColorStop(1, '#c33d6f');
+  c.fillStyle = g;
+  c.fillRect(0, 0, SKY_W, HOR);
+  // stars
+  for (let i = 0; i < 130; i++) {
+    c.fillStyle = `rgba(255,255,255,${rand(0.25, 0.9)})`;
+    c.fillRect(rand(0, SKY_W) | 0, rand(0, HOR * 0.7) | 0, 1, 1);
+  }
+  // striped synth sun
+  const sunX = 700, sunY = HOR - 8, sunR = 34;
+  const sg = c.createLinearGradient(0, sunY - sunR, 0, sunY + sunR);
+  sg.addColorStop(0, '#ffd23a'); sg.addColorStop(1, '#ff3e8a');
+  c.save();
+  c.beginPath(); c.arc(sunX, sunY, sunR, 0, TAU); c.clip();
+  c.fillStyle = sg; c.fillRect(sunX - sunR, sunY - sunR, sunR * 2, sunR * 2);
+  c.fillStyle = '#1c0b3f';
+  for (let i = 0; i < 5; i++) c.fillRect(sunX - sunR, sunY + 2 + i * 7, sunR * 2, 2 + i);
+  c.restore();
+  // mountain silhouettes
+  c.fillStyle = '#12082a';
+  c.beginPath(); c.moveTo(0, HOR);
+  for (let x = 0; x <= SKY_W; x += 40)
+    c.lineTo(x, HOR - 8 - Math.abs(Math.sin(x * 0.045) * 22 + Math.sin(x * 0.013) * 14));
+  c.lineTo(SKY_W, HOR); c.closePath(); c.fill();
+}
+
+// ============================================================
+// Audio (tiny WebAudio synth)
+// ============================================================
+
+let AC = null, engineOsc = null, engineGain = null, muted = false;
+function audioInit() {
+  if (AC) return;
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    engineOsc = AC.createOscillator();
+    engineOsc.type = 'sawtooth';
+    const filt = AC.createBiquadFilter();
+    filt.type = 'lowpass'; filt.frequency.value = 500;
+    engineGain = AC.createGain(); engineGain.gain.value = 0;
+    engineOsc.connect(filt); filt.connect(engineGain); engineGain.connect(AC.destination);
+    engineOsc.start();
+  } catch (e) { AC = null; }
+}
+function beep(freq, dur, type = 'square', vol = 0.12, slide = 0) {
+  if (!AC || muted) return;
+  const o = AC.createOscillator(), g = AC.createGain();
+  o.type = type; o.frequency.value = freq;
+  if (slide) o.frequency.linearRampToValueAtTime(freq + slide, AC.currentTime + dur);
+  g.gain.value = vol;
+  g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + dur);
+  o.connect(g); g.connect(AC.destination);
+  o.start(); o.stop(AC.currentTime + dur);
+}
+const sfx = {
+  shot:  () => beep(rand(320, 380), 0.09, 'square', 0.06, -120),
+  splat: () => beep(rand(120, 160), 0.12, 'sawtooth', 0.05, -60),
+  hit:   () => beep(300, 0.4, 'sawtooth', 0.15, -260),
+  boost: () => beep(180, 0.5, 'sawtooth', 0.1, 500),
+  pad:   () => beep(440, 0.18, 'square', 0.1, 320),
+  pickup:() => { beep(660, 0.08, 'square', 0.1); setTimeout(() => beep(990, 0.12, 'square', 0.1), 70); },
+  lap:   () => { beep(523, 0.12, 'square', 0.12); setTimeout(() => beep(784, 0.2, 'square', 0.12), 110); },
+  count: () => beep(440, 0.15, 'square', 0.15),
+  go:    () => beep(880, 0.5, 'square', 0.15),
+  turbo: () => beep(520, 0.25, 'sawtooth', 0.12, 400),
+};
+
+// ============================================================
+// Game state
+// ============================================================
+
+const keys = {};
+addEventListener('keydown', e => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+  keys[e.key.toLowerCase()] = true;
+  audioInit();
+  if (e.key.toLowerCase() === 'm') muted = !muted;
+  if (e.key === 'Enter') {
+    if (state === 'title' || state === 'finished') startRace();
+  }
+});
+addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+let state = 'title';   // title | countdown | race | finished
+let stateT = 0;        // time in current state
+let raceT = 0;         // race clock
+let msg = '', msgT = 0;
+let shake = 0;
+let karts = [], player = null;
+let blobs = [], pickups = [];
+let demoAngle = 0;
+
+function announce(text, t = 1.6) { msg = text; msgT = t; }
+
+function makeKart(team, row) {
+  const [sx, sy] = wps[0];
+  const [dx, dy] = wpDir[0];
+  const a = Math.atan2(dy, dx);
+  // grid the starting line: two columns behind the start
+  const back = 60 + row * 46;
+  const side = (row % 2 ? 40 : -40);
+  return {
+    team, ai: team !== 1,
+    x: sx - dx * back - dy * side,
+    y: sy - dy * back + dx * side,
+    angle: a, speed: 0,
+    wp: 0, lap: 0, progress: 0,
+    ink: 100, energy: 60,
+    drift: 0, driftDir: 0, turbo: 0,
+    spin: 0, padT: 0, boosting: false,
+    fireT: 0, trailT: 0, aiShotT: rand(2, 5),
+    finished: false, finishTime: 0, rank: row + 1,
+    aiSkill: rand(0.88, 1.0), aiWobble: rand(0, TAU),
+  };
+}
+
+function startRace() {
+  // reset world ink
+  inkCtx.clearRect(0, 0, WORLD, WORLD);
+  worldU32.set(baseU32);
+  inkGrid.fill(0);
+  inkCounts.fill(0);
+
+  karts = [makeKart(1, 0), makeKart(2, 1), makeKart(3, 2), makeKart(4, 3)];
+  player = karts[0];
+  blobs = [];
+  pickups = [];
+  for (const i of [4, 13, 22, 33, 43, 53]) {
+    const [x, y] = wps[i];
+    const [dx, dy] = wpDir[i];
+    const off = rand(-45, 45);
+    pickups.push({ x: x - dy * off, y: y + dx * off, t: 0 });
+  }
+  raceT = 0;
+  msg = ''; msgT = 0;
+  state = 'countdown'; stateT = 0;
+}
+
+// ============================================================
+// Physics & game logic
+// ============================================================
+
+function surfaceOf(k) { return inkAt(k.x, k.y); }
+
+function fireBlob(k) {
+  const s = Math.max(k.speed, 120) + 430;
+  blobs.push({
+    x: k.x + Math.cos(k.angle) * 26, y: k.y + Math.sin(k.angle) * 26,
+    vx: Math.cos(k.angle) * s + rand(-30, 30),
+    vy: Math.sin(k.angle) * s + rand(-30, 30),
+    team: k.team, life: rand(0.42, 0.55), t: 0,
+  });
+  if (!k.ai || dist2(k.x, k.y, player.x, player.y) < 600 * 600) sfx.shot();
+}
+
+function spinOut(k) {
+  if (k.spin > 0) return;
+  k.spin = 0.95;
+  k.speed *= 0.3;
+  k.drift = 0; k.turbo = 0;
+  if (k === player) { shake = 0.5; sfx.hit(); }
+}
+
+function advanceWaypoints(k) {
+  for (let tries = 0; tries < 3; tries++) {
+    const ni = (k.wp + 1) % WP_N;
+    const [nx, ny] = wps[ni];
+    const d2 = dist2(k.x, k.y, nx, ny);
+    const passed = (k.x - nx) * wpDir[ni][0] + (k.y - ny) * wpDir[ni][1] > 0;
+    if (d2 < 130 * 130 || (passed && d2 < 220 * 220)) {
+      k.wp = ni;
+      if (ni === 0) {
+        k.lap++;
+        if (k === player && !k.finished) {
+          if (k.lap === LAPS - 1) { announce('FINAL LAP!'); sfx.lap(); }
+          else if (k.lap < LAPS) { announce('LAP ' + (k.lap + 1)); sfx.lap(); }
+        }
+        k.energy = Math.min(100, k.energy + 40); // F-Zero style lap energy
+        if (k.lap >= LAPS && !k.finished) {
+          k.finished = true;
+          k.finishTime = raceT;
+          if (k === player) { state = 'finished'; stateT = 0; announce('FINISH!', 3); sfx.go(); }
+        }
+      }
+    } else break;
+  }
+  const ni = (k.wp + 1) % WP_N;
+  k.progress = (k.lap * WP_N + k.wp) * 1000 - Math.sqrt(dist2(k.x, k.y, wps[ni][0], wps[ni][1]));
+}
+
+function updateKart(k, dt) {
+  const surf = surfaceOf(k);
+  const onOwn = surf === k.team;
+  const onEnemy = surf > 0 && surf !== k.team;
+  const offRoad = surf === -1;
+
+  // --- controls ---
+  let throttle = 0, steer = 0, wantDrift = false, wantBoost = false, wantFire = false;
+  if (k.spin > 0) {
+    k.spin -= dt;
+  } else if (k.ai || (k.finished && state !== 'finished') || (k === player && k.finished)) {
+    // AI driving (also autopilots finished karts)
+    const look = (k.wp * (FINE_N / WP_N) + 7 + ((Math.sin(performance.now() * 0.001 + k.aiWobble) * 2) | 0) + FINE_N) % FINE_N;
+    const [tx, ty] = fine[look];
+    const ta = Math.atan2(ty - k.y, tx - k.x);
+    const d = angDiff(ta, k.angle);
+    steer = clamp(d * 3.5, -1, 1);
+    throttle = Math.abs(d) > 0.9 ? 0.25 : 1;
+    if (offRoad) throttle = 1;
+    // rubber-banding
+    if (!k.finished) {
+      const gap = (player.progress - k.progress) / 1000;
+      k.aiMax = clamp(1 + gap * 0.004, 0.86, 1.22) * k.aiSkill;
+    }
+    wantBoost = k.energy > 55 && Math.abs(d) < 0.25 && Math.random() < 0.02;
+    if (k.boosting && k.energy > 5 && Math.abs(d) < 0.35) wantBoost = true;
+    // AI paints a trail (Splatoon roller style)
+    k.trailT -= dt;
+    if (k.trailT <= 0 && !offRoad) { splat(k.x, k.y, 21, k.team); k.trailT = 0.16; }
+    // AI occasionally shoots
+    k.aiShotT -= dt;
+    if (k.aiShotT <= 0) { fireBlob(k); k.aiShotT = rand(2.2, 5); }
+  } else if (state === 'race') {
+    throttle = (keys['arrowup'] || keys['w']) ? 1 : 0;
+    if (keys['arrowdown'] || keys['s']) throttle = -1;
+    steer = ((keys['arrowright'] || keys['d']) ? 1 : 0) - ((keys['arrowleft'] || keys['a']) ? 1 : 0);
+    wantDrift = keys['shift'];
+    wantBoost = keys['x'] || keys['control'];
+    wantFire = keys[' '];
+  }
+
+  // --- drift & mini-turbo (Mario Kart) ---
+  let steerMul = 1;
+  if (k.spin <= 0 && wantDrift && Math.abs(steer) > 0 && k.speed > 140) {
+    if (k.drift === 0) k.driftDir = Math.sign(steer);
+    k.drift += dt;
+    steerMul = k.driftDir === Math.sign(steer) ? 1.5 : 0.6;
+  } else {
+    if (k.drift > 1.9) { k.turbo = 0.9; if (k === player) sfx.turbo(); }
+    else if (k.drift > 0.9) { k.turbo = 0.45; if (k === player) sfx.turbo(); }
+    k.drift = 0;
+  }
+  if (k.turbo > 0) k.turbo -= dt;
+
+  // --- boost (F-Zero energy) ---
+  k.boosting = false;
+  if (k.spin <= 0 && wantBoost && k.energy > 0 && k.speed > 60) {
+    k.boosting = true;
+    k.energy = Math.max(0, k.energy - 38 * dt);
+    if (k === player && !k.wasBoosting) sfx.boost();
+    // boosting sprays ink beneath you
+    k.trailT -= dt;
+    if (k.trailT <= 0 && !offRoad) { splat(k.x, k.y, 19, k.team); k.trailT = 0.1; }
+  }
+  k.wasBoosting = k.boosting;
+  if (k.padT > 0) k.padT -= dt;
+
+  // --- surface speed model (Splatoon) ---
+  let maxSpeed = 400 * (k.ai ? (k.aiMax || 1) : 1);
+  let accel = 270;
+  if (onOwn) { maxSpeed *= 1.13; accel *= 1.25; }
+  if (onEnemy) { maxSpeed *= 0.58; accel *= 0.5; }
+  if (offRoad) { maxSpeed *= 0.42; accel *= 0.45; if (k === player) shake = Math.max(shake, 0.12); }
+  if (k.boosting) { maxSpeed = Math.max(maxSpeed, 560); accel += 340; }
+  if (k.padT > 0) { maxSpeed = Math.max(maxSpeed, 570); accel += 400; }
+  if (k.turbo > 0) { maxSpeed = Math.max(maxSpeed, 520); accel += 300; }
+
+  if (throttle > 0 && k.speed < maxSpeed) k.speed += accel * throttle * dt;
+  else if (throttle < 0) k.speed -= 420 * dt;
+  k.speed -= k.speed * 0.72 * dt;                      // drag
+  if (k.speed > maxSpeed) k.speed = lerp(k.speed, maxSpeed, 1 - Math.pow(0.02, dt));
+  k.speed = clamp(k.speed, -80, 700);
+
+  const steerRate = 2.1 * steerMul * (k.speed / (Math.abs(k.speed) + 120));
+  if (k.spin > 0) k.angle += 11 * dt;                  // spin-out pirouette
+  else k.angle += steer * steerRate * dt * Math.sign(k.speed || 1);
+
+  k.x += Math.cos(k.angle) * k.speed * dt;
+  k.y += Math.sin(k.angle) * k.speed * dt;
+  k.x = clamp(k.x, 20, WORLD - 20);
+  k.y = clamp(k.y, 20, WORLD - 20);
+
+  // --- rescue: stranded off-road too long -> reset to last waypoint ---
+  if (offRoad && state === 'race') k.offT = (k.offT || 0) + dt;
+  else k.offT = 0;
+  if (k.offT > 2.2) {
+    k.offT = 0;
+    const [rx2, ry2] = wps[k.wp];
+    k.x = rx2; k.y = ry2;
+    k.angle = Math.atan2(wpDir[k.wp][1], wpDir[k.wp][0]);
+    k.speed = 0; k.spin = 0;
+    if (k === player) { announce('RESCUED!', 1.2); shake = 0.3; }
+  }
+
+  // --- boost pads ---
+  for (const p of pads) {
+    if (dist2(k.x, k.y, p.x, p.y) < 44 * 44 && k.padT <= 0.2) {
+      k.padT = 0.85;
+      k.energy = Math.min(100, k.energy + 12);
+      if (k === player) { sfx.pad(); shake = Math.max(shake, 0.18); }
+    }
+  }
+
+  // --- pickups ---
+  for (const p of pickups) {
+    if (p.t <= 0 && dist2(k.x, k.y, p.x, p.y) < 34 * 34) {
+      p.t = 6;
+      k.energy = Math.min(100, k.energy + 35);
+      k.ink = Math.min(100, k.ink + 40);
+      if (k === player) sfx.pickup();
+    }
+  }
+
+  // --- ink tank (Splatoon: refills faster on your own ink) ---
+  k.ink = Math.min(100, k.ink + (onOwn ? 20 : 7) * dt);
+
+  // --- player firing ---
+  k.fireT -= dt;
+  if (wantFire && k.fireT <= 0 && k.ink >= 7 && k.spin <= 0) {
+    k.ink -= 7;
+    fireBlob(k);
+    k.fireT = 0.13;
+  }
+
+  advanceWaypoints(k);
+}
+
+function updateBlobs(dt) {
+  for (let i = blobs.length - 1; i >= 0; i--) {
+    const b = blobs[i];
+    b.t += dt; b.life -= dt;
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    let dead = b.life <= 0;
+    for (const k of karts) {
+      if (k.team === b.team) continue;
+      if (dist2(b.x, b.y, k.x, k.y) < 30 * 30) {
+        spinOut(k);
+        splat(k.x, k.y, 40, b.team);
+        dead = true;
+        break;
+      }
+    }
+    if (dead) {
+      splat(b.x, b.y, 33, b.team);
+      if (dist2(b.x, b.y, player.x, player.y) < 500 * 500) sfx.splat();
+      blobs.splice(i, 1);
+    }
+  }
+}
+
+function updateRanks() {
+  const order = [...karts].sort((a, b) =>
+    (b.finished ? 1e9 - b.finishTime : b.progress) - (a.finished ? 1e9 - a.finishTime : a.progress));
+  order.forEach((k, i) => k.rank = i + 1);
+}
+
+function update(dt) {
+  stateT += dt;
+  if (msgT > 0) msgT -= dt;
+  if (shake > 0) shake -= dt;
+
+  if (state === 'title') { demoAngle += dt * 0.15; return; }
+
+  if (state === 'countdown') {
+    const n = 3 - (stateT | 0);
+    const label = n > 0 ? String(n) : 'GO!';
+    if (msg !== label) { msg = label; msgT = 1; if (n > 0) sfx.count(); else sfx.go(); }
+    if (stateT >= 3) { state = 'race'; }
+    return;
+  }
+
+  raceT += dt;
+  for (const k of karts) updateKart(k, dt);
+  for (const p of pickups) if (p.t > 0) p.t -= dt;
+  updateBlobs(dt);
+  updateRanks();
+
+  // engine hum follows player speed
+  if (AC && engineGain) {
+    engineGain.gain.value = muted ? 0 : 0.035;
+    engineOsc.frequency.value = 55 + player.speed * 0.35 + (player.boosting ? 40 : 0);
+  }
+}
+
+// ============================================================
+// Rendering
+// ============================================================
+
+const frame = ctx.createImageData(W, H);
+const framePx = new Uint32Array(frame.data.buffer);
+const FOG = { r: 0x30, g: 0x12, b: 0x42 };
+const fogU = u32(FOG.r, FOG.g, FOG.b);
+
+// per-row fog factor 0..256
+const fogRow = new Uint16Array(H);
+for (let y = HOR; y < H; y++) {
+  const d = CAMH * FOCAL / (y - HOR + 1);
+  fogRow[y] = clamp(((d - 750) / 750) * 256, 0, 256) | 0;
+}
+
+function renderGround(camX, camY, camA) {
+  const fx = Math.cos(camA), fy = Math.sin(camA);
+  const rx = -fy, ry = fx;
+  for (let y = HOR; y < H; y++) {
+    const d = CAMH * FOCAL / (y - HOR + 1);
+    const step = d / FOCAL;
+    const sx = rx * step, sy = ry * step;
+    let wx = camX + fx * d - sx * (W / 2);
+    let wy = camY + fy * d - sy * (W / 2);
+    const f = fogRow[y], nf = 256 - f;
+    let o = y * W;
+    for (let x = 0; x < W; x++) {
+      const ix = wx | 0, iy = wy | 0;
+      let c;
+      if (ix >= 0 && iy >= 0 && ix < WORLD && iy < WORLD) c = worldU32[(iy << 11) + ix];
+      else c = fogU;
+      if (f > 8) {
+        const r = (((c & 0xff) * nf + FOG.r * f) >> 8);
+        const g = ((((c >> 8) & 0xff) * nf + FOG.g * f) >> 8);
+        const b = ((((c >> 16) & 0xff) * nf + FOG.b * f) >> 8);
+        c = (255 << 24) | (b << 16) | (g << 8) | r;
+      }
+      framePx[o + x] = c;
+      wx += sx; wy += sy;
+    }
+  }
+  ctx.putImageData(frame, 0, 0, 0, HOR, W, H - HOR);
+}
+
+function project(camX, camY, camA, x, y) {
+  const fx = Math.cos(camA), fy = Math.sin(camA);
+  const relX = x - camX, relY = y - camY;
+  const zf = relX * fx + relY * fy;
+  if (zf < 12) return null;
+  const lat = relX * -fy + relY * fx;
+  return {
+    x: W / 2 + lat * FOCAL / zf,
+    y: HOR + CAMH * FOCAL / zf,
+    s: FOCAL / zf,
+    z: zf,
+  };
+}
+
+function renderSprites(camX, camY, camA) {
+  const list = [];
+  for (const k of karts) {
+    if (k === player && state !== 'title') continue;
+    const p = project(camX, camY, camA, k.x, k.y);
+    if (p) list.push({ p, kind: 'kart', o: k });
+  }
+  for (const b of blobs) {
+    const p = project(camX, camY, camA, b.x, b.y);
+    if (p) list.push({ p, kind: 'blob', o: b });
+  }
+  for (const pk of pickups) {
+    if (pk.t > 0) continue;
+    const p = project(camX, camY, camA, pk.x, pk.y);
+    if (p) list.push({ p, kind: 'pickup', o: pk });
+  }
+  list.sort((a, b) => b.p.z - a.p.z);
+  for (const it of list) {
+    const { p, kind, o } = it;
+    if (p.z > 1500) continue;
+    if (kind === 'kart') {
+      const size = clamp(p.s * 46, 3, 120);
+      // shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, size * 0.42, size * 0.14, 0, 0, TAU);
+      ctx.fill();
+      let rel = o.angle - camA + (o.spin > 0 ? o.spin * 12 : 0);
+      let f = Math.round(rel / (TAU / SPR_N)) % SPR_N;
+      if (f < 0) f += SPR_N;
+      ctx.drawImage(kartSheets[o.team], f * SPR, 0, SPR, SPR,
+        p.x - size / 2, p.y - size * 0.72, size, size);
+      if (o.boosting || o.padT > 0) {
+        ctx.fillStyle = 'rgba(120,240,255,0.8)';
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y + size * 0.05, size * 0.18, size * 0.3 + rand(0, size * 0.12), 0, 0, TAU);
+        ctx.fill();
+      }
+    } else if (kind === 'blob') {
+      const arc = Math.sin(clamp(o.t / 0.5, 0, 1) * Math.PI) * 30;
+      const size = clamp(p.s * 14, 2, 40);
+      ctx.fillStyle = TEAMS[o.team].ink;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y - arc * p.s, size / 2, 0, TAU);
+      ctx.fill();
+    } else {
+      const size = clamp(p.s * 34, 3, 70);
+      const pulse = 1 + Math.sin(performance.now() * 0.006) * 0.12;
+      ctx.strokeStyle = '#ffe95a';
+      ctx.lineWidth = Math.max(1, size * 0.09);
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y - size * 0.35, size * 0.4 * pulse, size * 0.5 * pulse, 0, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,233,90,0.4)';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, size * 0.4, size * 0.12, 0, 0, TAU);
+      ctx.stroke();
+    }
+  }
+}
+
+function renderPlayerKart() {
+  const k = player;
+  const px = W / 2, py = 236;
+  const steer = ((keys['arrowright'] || keys['d']) ? 1 : 0) - ((keys['arrowleft'] || keys['a']) ? 1 : 0);
+  ctx.save();
+  ctx.translate(px, py);
+  if (k.spin > 0) ctx.rotate(k.spin * 12);
+  else ctx.rotate(steer * 0.1 + (k.drift > 0 ? k.driftDir * 0.16 : 0));
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath(); ctx.ellipse(0, 13, 24, 6, 0, 0, TAU); ctx.fill();
+  // boost flame
+  if (k.boosting || k.padT > 0 || k.turbo > 0) {
+    ctx.fillStyle = k.padT > 0 ? '#ffd23a' : '#7ef7ff';
+    ctx.beginPath();
+    ctx.ellipse(-12, 12, 4, 7 + rand(0, 5), 0, 0, TAU);
+    ctx.ellipse(12, 12, 4, 7 + rand(0, 5), 0, 0, TAU);
+    ctx.fill();
+  }
+  // hull (seen from behind)
+  const t = TEAMS[1];
+  ctx.fillStyle = t.body;
+  ctx.beginPath();
+  ctx.moveTo(-20, 8); ctx.lineTo(-14, -8); ctx.lineTo(14, -8); ctx.lineTo(20, 8);
+  ctx.quadraticCurveTo(0, 14, -20, 8);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+  // ink tank
+  ctx.fillStyle = t.ink;
+  ctx.beginPath(); ctx.ellipse(0, -6, 8, 6, 0, 0, TAU); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)'; ctx.stroke();
+  // cockpit dome
+  ctx.fillStyle = '#101426';
+  ctx.beginPath(); ctx.ellipse(0, -10, 7, 6, 0, 0, Math.PI, true); ctx.fill();
+  ctx.fillStyle = '#9fdcff';
+  ctx.beginPath(); ctx.ellipse(0, -11, 4, 3, 0, 0, Math.PI, true); ctx.fill();
+  // thrusters
+  ctx.fillStyle = '#232742';
+  ctx.fillRect(-18, 4, 8, 8); ctx.fillRect(10, 4, 8, 8);
+  ctx.fillStyle = '#7ef7ff';
+  ctx.fillRect(-16, 6, 4, 4); ctx.fillRect(12, 6, 4, 4);
+  // drift sparks
+  if (k.drift > 0.9) {
+    ctx.fillStyle = k.drift > 1.9 ? '#ff9a2a' : '#5ad2ff';
+    for (let i = 0; i < 3; i++)
+      ctx.fillRect(-k.driftDir * rand(16, 26), rand(8, 14), 2, 2);
+  }
+  ctx.restore();
+}
+
+function bar(x, y, w, h, frac, color, label) {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w * clamp(frac, 0, 1), h);
+  if (label) {
+    ctx.fillStyle = '#cfd6ff';
+    ctx.font = '7px monospace';
+    ctx.fillText(label, x, y - 2);
+  }
+}
+
+function fmtTime(t) {
+  const m = (t / 60) | 0, s = t % 60;
+  return m + ':' + (s < 10 ? '0' : '') + s.toFixed(2);
+}
+
+const PLACE = ['1st', '2nd', '3rd', '4th'];
+
+function renderHUD() {
+  ctx.textBaseline = 'top';
+  // position + lap
+  ctx.font = 'bold 22px monospace';
+  ctx.fillStyle = player.rank === 1 ? '#ffd23a' : '#ffffff';
+  ctx.fillText(PLACE[player.rank - 1], 8, 6);
+  ctx.font = 'bold 10px monospace';
+  ctx.fillStyle = '#cfd6ff';
+  ctx.fillText('LAP ' + Math.min(player.lap + 1, LAPS) + '/' + LAPS, 8, 30);
+  // timer
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#cfd6ff';
+  ctx.fillText(fmtTime(raceT), W - 8, 6);
+  // speed
+  ctx.fillStyle = player.boosting || player.padT > 0 ? '#7ef7ff' : '#ffffff';
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText(((player.speed * 1.6) | 0) + ' km/h', W - 8, H - 20);
+  ctx.textAlign = 'left';
+  // meters
+  bar(8, H - 14, 90, 6, player.ink / 100, TEAMS[1].ink, 'INK');
+  bar(8, H - 32, 90, 6, player.energy / 100, '#39e6ff', 'BOOST');
+  // turf meter (Splatoon-style share bar)
+  const total = Math.max(1, inkCounts[1] + inkCounts[2] + inkCounts[3] + inkCounts[4]);
+  let tx = W / 2 - 60;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(tx - 1, 7, 122, 8);
+  for (let t = 1; t <= 4; t++) {
+    const w = 120 * inkCounts[t] / total;
+    ctx.fillStyle = TEAMS[t].ink;
+    ctx.fillRect(tx, 8, w, 6);
+    tx += w;
+  }
+  ctx.fillStyle = '#cfd6ff';
+  ctx.font = '7px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('TURF ' + ((100 * inkCounts[1] / Math.max(1, roadCells)) | 0) + '%', W / 2, 17);
+  ctx.textAlign = 'left';
+  // minimap (shows live ink!)
+  const MM = 64, mx = W - MM - 6, my = 22;
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(mx - 2, my - 2, MM + 4, MM + 4);
+  ctx.drawImage(trackCv, 0, 0, WORLD, WORLD, mx, my, MM, MM);
+  ctx.drawImage(inkCv, 0, 0, WORLD, WORLD, mx, my, MM, MM);
+  for (const k of karts) {
+    ctx.fillStyle = k === player ? '#ffffff' : TEAMS[k.team].body;
+    ctx.fillRect(mx + k.x / WORLD * MM - 1.5, my + k.y / WORLD * MM - 1.5, 3, 3);
+  }
+  // center message
+  if (msgT > 0 && msg) {
+    ctx.font = 'bold 30px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillText(msg, W / 2 + 2, 82);
+    ctx.fillStyle = msg === 'GO!' ? '#7dff2a' : '#ffd23a';
+    ctx.fillText(msg, W / 2, 80);
+    ctx.textAlign = 'left';
+  }
+}
+
+function renderTitle() {
+  ctx.fillStyle = 'rgba(4,2,14,0.55)';
+  ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.font = 'bold 42px monospace';
+  ctx.fillStyle = '#ff7a1a';
+  ctx.fillText('INK-ZERO', W / 2 + 2, 44);
+  ctx.fillStyle = '#39e6ff';
+  ctx.fillText('INK-ZERO', W / 2, 42);
+  ctx.font = 'bold 18px monospace';
+  ctx.fillStyle = '#ffd23a';
+  ctx.fillText('G R A N D   P R I X', W / 2, 86);
+  ctx.font = '9px monospace';
+  ctx.fillStyle = '#cfd6ff';
+  const lines = [
+    'PAINT the track — your ink is FAST, enemy ink is SLOW',
+    '',
+    '↑/W drive   ←→/A,D steer   SHIFT drift (charge mini-turbo)',
+    'SPACE fire ink   X boost (energy)   M mute',
+    '',
+    '4 laps · boost pads · splat rivals to spin them out',
+  ];
+  lines.forEach((l, i) => ctx.fillText(l, W / 2, 122 + i * 12));
+  if ((performance.now() / 500 | 0) % 2) {
+    ctx.font = 'bold 13px monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('PRESS ENTER', W / 2, 216);
+  }
+  ctx.textAlign = 'left';
+}
+
+function renderResults() {
+  ctx.fillStyle = 'rgba(4,2,14,0.72)';
+  ctx.fillRect(W / 2 - 130, 40, 260, 176);
+  ctx.strokeStyle = '#39e6ff';
+  ctx.strokeRect(W / 2 - 130, 40, 260, 176);
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 18px monospace';
+  ctx.fillStyle = '#ffd23a';
+  ctx.fillText(player.rank === 1 ? 'YOU WIN!' : 'FINISH — ' + PLACE[player.rank - 1], W / 2, 50);
+  ctx.font = '10px monospace';
+  const order = [...karts].sort((a, b) => a.rank - b.rank);
+  const total = Math.max(1, roadCells);
+  let bestTurf = 1;
+  for (let t = 2; t <= 4; t++) if (inkCounts[t] > inkCounts[bestTurf]) bestTurf = t;
+  order.forEach((k, i) => {
+    const y = 78 + i * 16;
+    ctx.fillStyle = TEAMS[k.team].body;
+    ctx.textAlign = 'left';
+    ctx.fillText(PLACE[k.rank - 1] + '  ' + TEAMS[k.team].name.padEnd(6), W / 2 - 112, y);
+    ctx.textAlign = 'right';
+    ctx.fillText((k.finished ? fmtTime(k.finishTime) : '—').padStart(8) +
+      '  ' + String((100 * inkCounts[k.team] / total) | 0).padStart(2) + '% turf', W / 2 + 112, y);
+  });
+  ctx.textAlign = 'center';
+  ctx.fillStyle = TEAMS[bestTurf].ink;
+  ctx.font = 'bold 11px monospace';
+  ctx.fillText('TURF CHAMPION: ' + TEAMS[bestTurf].name, W / 2, 152);
+  if ((performance.now() / 500 | 0) % 2) {
+    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('ENTER = REMATCH', W / 2, 190);
+  }
+  ctx.textAlign = 'left';
+}
+
+function render() {
+  let camX, camY, camA;
+  if (state === 'title') {
+    camA = demoAngle;
+    camX = wps[0][0] - Math.cos(camA) * 110;
+    camY = wps[0][1] - Math.sin(camA) * 110;
+  } else {
+    camA = player.angle;
+    camX = player.x - Math.cos(camA) * 110;
+    camY = player.y - Math.sin(camA) * 110;
+    if (shake > 0) {
+      camX += rand(-1, 1) * shake * 14;
+      camY += rand(-1, 1) * shake * 14;
+    }
+  }
+
+  // sky panorama with parallax
+  let off = ((-camA / TAU) * SKY_W * 2) % SKY_W;
+  if (off > 0) off -= SKY_W;
+  ctx.drawImage(skyCv, off, 0);
+  ctx.drawImage(skyCv, off + SKY_W, 0);
+  if (off + SKY_W * 2 < W) ctx.drawImage(skyCv, off + SKY_W * 2, 0);
+
+  renderGround(camX, camY, camA);
+  renderSprites(camX, camY, camA);
+
+  if (state === 'title') renderTitle();
+  else {
+    if (state !== 'finished' || stateT < 0.5) renderPlayerKart();
+    else renderPlayerKart();
+    renderHUD();
+    if (state === 'finished' && stateT > 1.2) renderResults();
+  }
+}
+
+// ============================================================
+// Main loop
+// ============================================================
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min((now - last) / 1000, 1 / 30);
+  last = now;
+  update(dt);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

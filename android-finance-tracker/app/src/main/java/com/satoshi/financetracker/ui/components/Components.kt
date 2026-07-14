@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -70,7 +72,7 @@ fun AllocationRow(label: String, amountLabel: String, fraction: Float, color: Co
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Icon(
-                imageVector = androidx.compose.material.icons.Icons.Default.Circle,
+                imageVector = Icons.Default.Circle,
                 contentDescription = null,
                 tint = color,
                 modifier = Modifier.size(10.dp)

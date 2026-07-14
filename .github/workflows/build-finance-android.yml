@@ -1,0 +1,72 @@
+name: Build Finance Tracker APK
+
+on:
+  push:
+    branches: [ "claude/investment-debt-tracker-ihxl7f", "main" ]
+    paths:
+      - "android-finance-tracker/**"
+      - ".github/workflows/build-finance-android.yml"
+  pull_request:
+    paths:
+      - "android-finance-tracker/**"
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Test & Build Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android-finance-tracker/gradlew
+        continue-on-error: true
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-finance-${{ hashFiles('android-finance-tracker/**/*.gradle*', 'android-finance-tracker/**/libs.versions.toml') }}
+          restore-keys: ${{ runner.os }}-gradle-finance-
+
+      - name: Run unit tests
+        working-directory: android-finance-tracker
+        run: |
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace > /tmp/test.log 2>&1 || {
+            echo "=== Test failures ==="
+            grep -E "^e: |error: |FAILED|> " /tmp/test.log | head -60
+            echo "=== Last 30 lines ==="
+            tail -30 /tmp/test.log
+            exit 1
+          }
+
+      - name: Build debug APK
+        working-directory: android-finance-tracker
+        run: |
+          ./gradlew assembleDebug --no-daemon --stacktrace > /tmp/build.log 2>&1 || {
+            echo "=== Kotlin/AAPT errors ==="
+            grep -E "^e: |error: |^> " /tmp/build.log | head -60
+            echo "=== Last 30 lines ==="
+            tail -30 /tmp/build.log
+            exit 1
+          }
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: finance-tracker-debug-${{ github.run_number }}
+          path: android-finance-tracker/app/build/outputs/apk/debug/app-debug.apk

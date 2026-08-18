@@ -1,0 +1,10 @@
+{
+  "name": "Algorithm Atlas",
+  "short_name": "Atlas",
+  "description": "Learn data structures & algorithms by watching them run.",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0F1519",
+  "theme_color": "#0E8A74",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

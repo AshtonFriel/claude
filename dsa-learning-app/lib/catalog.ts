@@ -30,6 +30,6 @@ export const topicPath = (t: Pick<Topic, "id" | "category">) =>
 /** Planned topics shown as "soon" in the sidebar. */
 export const PLANNED: Record<string, string[]> = {
   Trees: ["Tries (Prefix Trees)"],
-  Graphs: ["A* Search", "Union-Find (DSU)"],
-  "Greedy Algorithms": ["Interval Scheduling", "Huffman Coding"],
+  Graphs: ["A* Search", "Kruskal's MST"],
+  "Greedy Algorithms": ["Huffman Coding"],
 };

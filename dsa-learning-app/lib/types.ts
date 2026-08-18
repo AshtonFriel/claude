@@ -174,7 +174,7 @@ export interface CellsState {
 }
 
 export interface StackState {
-  items: number[];
+  items: (number | string)[];
   /** How to highlight the top item this frame. */
   hl?: "push" | "pop" | "peek";
 }

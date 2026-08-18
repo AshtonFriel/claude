@@ -8,6 +8,10 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 const nextConfig: NextConfig = {
   output: "export",
   basePath,
+  // Emit dashboard/index.html rather than dashboard.html. Static hosts like
+  // GitHub Pages only resolve a directory URL ("/dashboard/") to an index.html,
+  // so without this every route 404s the moment a trailing slash is involved.
+  trailingSlash: true,
   images: { unoptimized: true },
 };
 

@@ -29,6 +29,7 @@ export function Tree({ state }: { state: TreeState }) {
   const Yp = (id: number) => PAD + pos[id].d * YS;
 
   const visited = new Set(state.visited ?? []);
+  const alt = new Set(state.alt ?? []);
   const edges: ReactNode[] = [];
   const circles: ReactNode[] = [];
 
@@ -51,17 +52,21 @@ export function Tree({ state }: { state: TreeState }) {
     const i = Number(key);
     const cls = ["sv-node"];
     if (visited.has(i)) cls.push("visited");
+    if (alt.has(i)) cls.push("alt");
     if (state.current === i) cls.push("current");
     circles.push(
       <g key={`n${i}`} className={visited.has(i) ? "visited" : undefined}>
         <circle cx={X(i)} cy={Yp(i)} r={21} className={cls.join(" ")} />
         <text x={X(i)} y={Yp(i)} className="sv-label">{nodes[i].v}</text>
+        {state.tags?.[i] !== undefined && (
+          <text x={X(i) + 24} y={Yp(i) - 16} className="sv-tag">{state.tags[i]}</text>
+        )}
       </g>,
     );
   }
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width={Math.min(W, 640)} role="img" aria-label="Binary search tree diagram">
+    <svg viewBox={`0 0 ${W} ${H}`} width={Math.min(W, 640)} role="img" aria-label="Binary tree diagram">
       {edges}
       {circles}
       {state.pending !== undefined && (

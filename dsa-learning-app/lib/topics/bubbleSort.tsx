@@ -25,11 +25,11 @@ export const bubbleSort: NumsTopic<BarsState> = {
     </>
   ),
   code: [
-    "function bubbleSort(a) {",
-    "  const n = a.length;",
-    "  for (let i = 0; i < n - 1; i++) {",
-    "    let swapped = false;",
-    "    for (let j = 0; j < n - 1 - i; j++) {",
+    "static int[] bubbleSort(int[] a) {",
+    "  int n = a.length;",
+    "  for (int i = 0; i < n - 1; i++) {",
+    "    boolean swapped = false;",
+    "    for (int j = 0; j < n - 1 - i; j++) {",
     "      if (a[j] > a[j + 1]) {",
     "        swap(a, j, j + 1);",
     "        swapped = true;",

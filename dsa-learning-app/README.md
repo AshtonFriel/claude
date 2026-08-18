@@ -15,22 +15,28 @@ npm start        # serve the production build
 
 ## What's inside
 
-| Category | Topics (built) |
+| Category | Topics |
 | --- | --- |
+| Arrays | Two Pointers, Sliding Window |
+| Linked Lists | Reverse a Linked List, Doubly Linked List, Cycle Detection (Floyd) |
+| Stacks & Queues | Stack Operations, Queue & Deque |
+| Trees | Binary Search Tree, AVL Rotations, Binary Heap |
+| Graphs | Breadth-First Search, Depth-First Search, Dijkstra's Algorithm, Topological Sort |
 | Sorting Algorithms | Bubble Sort, Merge Sort, Quick Sort |
-| Linked Lists | Reverse a Linked List |
-| Trees | Binary Search Tree (insert + in-order traversal) |
-| Graphs | Breadth-First Search, Depth-First Search |
+| Searching Algorithms | Binary Search, Linear Search |
+| Dynamic Programming | Fibonacci & Memoization, 0/1 Knapsack |
+| Recursion & Backtracking | N-Queens, Subset Generation |
 
 Every topic view has:
 
 - **Visualizer** — the algorithm's operations animated one step at a time (array swaps,
   pointer movement, node visits), with play / pause / step-forward / step-back / skip
   controls, a speed slider, and keyboard shortcuts (`Space` play/pause, `←` / `→` step).
-- **Custom input** — type your own array, list values, or graph edges (`A-B, A-C, …`) and
-  run the algorithm on them.
-- **Code panel** — the JavaScript implementation with the currently executing line
-  highlighted as the animation runs.
+- **Custom input** — type your own array, list values, graph edges (`A-B, A-C`, weighted
+  `A-B:4`, directed `A>B`), or operation scripts (`push 3, pop`) and run the algorithm on
+  them.
+- **Code panel** — the Java implementation with the currently executing line highlighted
+  as the animation runs.
 - **Learning aids** — what the algorithm does, best/average/worst time and space
   complexity, and real-world use cases.
 - **Quiz** — three questions per topic; answer all correctly (or use "Mark as complete")

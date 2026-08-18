@@ -12,13 +12,5 @@ export const CATEGORIES = [
   "Recursion & Backtracking",
 ] as const;
 
-export const PLANNED: Record<string, string[]> = {
-  Arrays: ["Two Pointers", "Sliding Window"],
-  "Linked Lists": ["Doubly Linked List", "Cycle Detection"],
-  "Stacks & Queues": ["Stack Operations", "Queue & Deque"],
-  Trees: ["AVL Rotations", "Binary Heap"],
-  Graphs: ["Dijkstra’s Algorithm", "Topological Sort"],
-  "Searching Algorithms": ["Binary Search", "Linear Search"],
-  "Dynamic Programming": ["Fibonacci & Memoization", "0/1 Knapsack"],
-  "Recursion & Backtracking": ["N-Queens", "Subset Generation"],
-};
+/** Every planned topic is now built — add future "coming soon" entries here. */
+export const PLANNED: Record<string, string[]> = {};

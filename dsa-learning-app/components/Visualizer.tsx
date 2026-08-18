@@ -3,50 +3,74 @@
 import { useEffect, useState } from "react";
 import { usePlayer } from "@/lib/player";
 import { parseGraph, parseNums, randomArray } from "@/lib/parse";
-import type { NumsTopic, Step, Topic } from "@/lib/types";
+import type { GraphTopic, NumsTopic, Step, TextTopic, Topic } from "@/lib/types";
 import { CodePanel } from "./CodePanel";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* eslint-disable @typescript-eslint/no-explicit-any */
 function isNums(t: Topic): t is NumsTopic<any> {
   return t.inputs.kind === "nums";
 }
+function isGraph(t: Topic): t is GraphTopic<any> {
+  return t.inputs.kind === "graph";
+}
+function isText(t: Topic): t is TextTopic<any> {
+  return t.inputs.kind === "text";
+}
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function stepsFor(topic: Topic, text: string, startText: string): Step<any>[] {
+function stepsFor(topic: Topic, text: string, extra: string): Step<any>[] {
   if (isNums(topic)) {
-    return topic.makeSteps(parseNums(text, { max: topic.inputs.max ?? 12, allowDup: topic.inputs.allowDup !== false }));
+    const spec = topic.inputs;
+    const nums = parseNums(text, { min: spec.min ?? 2, max: spec.max ?? 12, allowDup: spec.allowDup !== false });
+    return topic.makeSteps(nums, extra);
   }
-  const graph = parseGraph(text);
-  const start = startText.trim().toUpperCase();
-  if (!graph.adj[start]) {
-    throw new Error(`Start node "${start || "?"}" isn't in the graph. Nodes: ${graph.nodes.join(", ")}.`);
+  if (isGraph(topic)) {
+    const graph = parseGraph(text);
+    const start = extra.trim().toUpperCase();
+    if (!graph.adj[start]) {
+      throw new Error(`Start node "${start || "?"}" isn't in the graph. Nodes: ${graph.nodes.join(", ")}.`);
+    }
+    return topic.makeSteps({ graph, start });
   }
-  return topic.makeSteps({ graph, start });
+  return (topic as TextTopic<any>).makeSteps({ text, extra });
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+function defaultExtra(topic: Topic): string {
+  if (isGraph(topic)) return topic.inputs.startDefault;
+  if (isNums(topic) || isText(topic)) return topic.inputs.extraField?.defaultValue ?? "";
+  return "";
 }
 
 /** The full workbench for one topic: input row, stage, transport, and synced code panel. */
 export function Visualizer({ topic }: { topic: Topic }) {
   const [text, setText] = useState(topic.inputs.defaultValue);
-  const [startText, setStartText] = useState(isNums(topic) ? "" : topic.inputs.startDefault);
+  const [extra, setExtra] = useState(() => defaultExtra(topic));
   const [error, setError] = useState<string | null>(null);
-  const [steps, setSteps] = useState(() => stepsFor(topic, topic.inputs.defaultValue, isNums(topic) ? "" : topic.inputs.startDefault));
+  const [steps, setSteps] = useState(() => stepsFor(topic, topic.inputs.defaultValue, defaultExtra(topic)));
   const player = usePlayer(steps);
 
-  const run = (t = text, s = startText) => {
+  const run = (t = text, x = extra) => {
     try {
-      setSteps(stepsFor(topic, t, s));
+      setSteps(stepsFor(topic, t, x));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
+  const canShuffle = isNums(topic) && (topic.inputs.max ?? 12) > 1;
   const shuffle = () => {
     if (!isNums(topic)) return;
     const v = randomArray(Math.min(8, topic.inputs.max ?? 8)).join(", ");
     setText(v);
-    run(v, startText);
+    run(v, extra);
   };
+
+  const extraLabel = isGraph(topic)
+    ? "Start"
+    : (isNums(topic) || isText(topic)) && topic.inputs.extraField
+      ? topic.inputs.extraField.label
+      : null;
 
   const { togglePlay, stepFwd, stepBack } = player;
   useEffect(() => {
@@ -85,18 +109,19 @@ export function Visualizer({ topic }: { topic: Topic }) {
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && run()}
           />
-          {isNums(topic) ? (
+          {canShuffle && (
             <button className="shuffle-btn" title="Random values" onClick={shuffle}>🎲</button>
-          ) : (
+          )}
+          {extraLabel && (
             <>
-              <label htmlFor="viz-start">Start</label>
+              <label htmlFor="viz-extra">{extraLabel}</label>
               <input
-                id="viz-start"
+                id="viz-extra"
                 type="text"
-                className="start-input"
-                value={startText}
+                className="extra-input"
+                value={extra}
                 spellCheck={false}
-                onChange={(e) => setStartText(e.target.value)}
+                onChange={(e) => setExtra(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && run()}
               />
             </>

@@ -32,12 +32,20 @@ export interface QuizQuestion {
   why: string;
 }
 
+/** A second, short input field (search target, window size, capacity, start node …). */
+export interface ExtraField {
+  label: string;
+  defaultValue: string;
+}
+
 export interface NumsInputSpec {
   kind: "nums";
   label: string;
   defaultValue: string;
+  min?: number;
   max?: number;
   allowDup?: boolean;
+  extraField?: ExtraField;
 }
 
 export interface GraphInputSpec {
@@ -45,6 +53,14 @@ export interface GraphInputSpec {
   label: string;
   defaultValue: string;
   startDefault: string;
+}
+
+/** Free-form text input, parsed by the topic's own makeSteps (ops scripts, weighted edges …). */
+export interface TextInputSpec {
+  kind: "text";
+  label: string;
+  defaultValue: string;
+  extraField?: ExtraField;
 }
 
 export interface GraphData {
@@ -77,7 +93,7 @@ interface TopicBase<S> {
 
 export interface NumsTopic<S> extends TopicBase<S> {
   inputs: NumsInputSpec;
-  makeSteps(input: number[]): Step<S>[];
+  makeSteps(input: number[], extra?: string): Step<S>[];
 }
 
 export interface GraphTopic<S> extends TopicBase<S> {
@@ -85,8 +101,13 @@ export interface GraphTopic<S> extends TopicBase<S> {
   makeSteps(input: GraphInput): Step<S>[];
 }
 
+export interface TextTopic<S> extends TopicBase<S> {
+  inputs: TextInputSpec;
+  makeSteps(input: { text: string; extra?: string }): Step<S>[];
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Topic<S = any> = NumsTopic<S> | GraphTopic<S>;
+export type Topic<S = any> = NumsTopic<S> | GraphTopic<S> | TextTopic<S>;
 
 /* ---------------- renderer state shapes ---------------- */
 
@@ -100,19 +121,71 @@ export interface BarsState {
   done?: boolean;
 }
 
-export interface ListPtrs {
-  /** undefined = pointer not introduced yet; null = points at ∅. */
-  prev?: number | null;
-  curr?: number | null;
-  next?: number | null;
+/** Labelled pointer drawn under a cell. `color` is a CSS color value (usually a token var). */
+export interface CellPtr {
+  name: string;
+  idx: number;
+  color: string;
+}
+
+/** Boxes-in-a-row renderer state: searching, windows, memo tables, queues, subsets. */
+export interface CellsState {
+  a: (number | string)[];
+  compare?: number[];
+  active?: number[];
+  done?: number[];
+  range?: [number, number];
+  /** Dim everything outside `range` (search-space shrinking). */
+  dimOutside?: boolean;
+  hideIndex?: boolean;
+  ptrs?: CellPtr[];
+  /** Message shown when `a` is empty. */
+  empty?: string;
+}
+
+export interface StackState {
+  items: number[];
+  /** How to highlight the top item this frame. */
+  hl?: "push" | "pop" | "peek";
+}
+
+/** DP-table renderer state. `cells[r][c]` of null = not computed yet. */
+export interface GridState {
+  colLabels: string[];
+  rowLabels: string[];
+  cells: (number | null)[][];
+  cur?: [number, number];
+  refs?: [number, number][];
+  goal?: [number, number];
+}
+
+/** N-Queens board. `queens[r]` = column of the queen on row r, or null. */
+export interface BoardState {
+  n: number;
+  queens: (number | null)[];
+  tryCell?: [number, number];
+  conflicts?: [number, number][];
+  solved?: boolean;
+}
+
+/** Chip pointing at a linked-list node (or ∅ when target is null). */
+export interface ListChip {
+  name: string;
+  target: number | null;
+  color: string;
+  lane: number;
 }
 
 export interface ListState {
   vals: number[];
   /** node index -> next node index; null = ∅ shown in the cell; -1 = flipped link to the ∅ slot. */
   next: Record<number, number | null>;
-  ptrs: ListPtrs;
+  /** Backward pointers (doubly linked lists), drawn as arcs below the cells. */
+  prevLinks?: Record<number, number | null>;
+  chips?: ListChip[];
   newHead?: number;
+  /** Nodes rendered faded (deleted). */
+  gone?: number[];
 }
 
 export interface TreeNode {
@@ -125,14 +198,23 @@ export interface TreeState {
   nodes: TreeNode[];
   root: number | null;
   current?: number;
+  /** Secondary highlight (sift partner, rotation pivot …). */
+  alt?: number[];
   visited?: number[];
   pending?: number;
+  /** Small annotation drawn beside a node (balance factor, height …). */
+  tags?: Record<number, string>;
   /** true when `current` was just attached (suppresses the active-edge highlight). */
   settled?: boolean;
 }
 
 export interface GraphState {
   graph: GraphData;
+  directed?: boolean;
+  /** Edge weight labels keyed "u|v" in the edge's stored orientation. */
+  weights?: Record<string, number>;
+  /** Small label under each node (distance, in-degree …). */
+  sub?: Record<string, string>;
   visited?: string[];
   seen?: string[];
   tread?: [string, string][];

@@ -12,7 +12,7 @@ export function CodePanel({ code, line }: { code: string[]; line: number }) {
 
   return (
     <section className="card code-card" aria-label="Code">
-      <div className="card-h code-h">JavaScript — executing line highlighted</div>
+      <div className="card-h code-h">Java — executing line highlighted</div>
       <div className="code-body" ref={ref}>
         {code.map((l, i) => (
           <div key={i} className={`code-line${i + 1 === line ? " hl" : ""}`}>

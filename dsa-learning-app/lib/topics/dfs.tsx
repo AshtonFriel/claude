@@ -30,12 +30,12 @@ export const dfs: GraphTopic<GraphState> = {
     </>
   ),
   code: [
-    "function dfs(graph, node, visited) {",
+    "static void dfs(Graph g, String node, Set<String> visited) {",
     "  visited.add(node);",
     "  visit(node);",
-    "  for (const next of graph[node]) {",
-    "    if (!visited.has(next)) {",
-    "      dfs(graph, next, visited);",
+    "  for (String next : g.adj(node)) {",
+    "    if (!visited.contains(next)) {",
+    "      dfs(g, next, visited);",
     "    }",
     "  }",
     "}",

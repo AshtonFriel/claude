@@ -49,6 +49,33 @@ export const doublyLinkedList: NumsTopic<ListState> = {
     allowDup: false,
     extraField: { label: "Remove", defaultValue: "9" },
   },
+  codeAlt: {
+    javascript: [
+      "function remove(list, v) {",
+      "  let node = list.head;",
+      "  while (node !== null && node.val !== v)",
+      "    node = node.next;",
+      "  if (node === null) return;",
+      "  const before = node.prev;",
+      "  const after = node.next;",
+      "  if (before !== null) before.next = after;",
+      "  else list.head = after;",
+      "  if (after !== null) after.prev = before;",
+      "  else list.tail = before;",
+      "  node.prev = node.next = null;",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Updating next but forgetting prev (or vice versa) — the list works one direction and is corrupt the other.",
+    "Not special-casing head/tail removal, leaving list.head or list.tail pointing at a detached node.",
+    "Leaving the removed node's own pointers set, keeping the rest of the list reachable from 'deleted' data.",
+  ],
+  interview: [
+    "\"Design an LRU cache\" — the doubly linked list + hash map combo.",
+    "\"Flatten a multilevel doubly linked list.\"",
+    "\"Design a browser history\" — back/forward is prev/next.",
+  ],
   legend: [
     ["--c-pointer", "next links"],
     ["--c-pivot", "prev links"],

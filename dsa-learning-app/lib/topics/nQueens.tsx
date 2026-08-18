@@ -40,6 +40,31 @@ export const nQueens: NumsTopic<BoardState> = {
     "}",
   ],
   inputs: { kind: "nums", label: "Board size n", defaultValue: "5", min: 1, max: 1 },
+  codeAlt: {
+    javascript: [
+      "function solve(board, row) {",
+      "  if (row === board.n) return true;",
+      "  for (let col = 0; col < board.n; col++) {",
+      "    if (board.safe(row, col)) {",
+      "      board.place(row, col);",
+      "      if (solve(board, row + 1)) return true;",
+      "      board.remove(row, col);",
+      "    }",
+      "  }",
+      "  return false;",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Forgetting the undo (remove) after a failed recursion — the board keeps ghost queens and everything after is wrong.",
+    "Checking only columns and forgetting the two diagonals (r − c and r + c identify them).",
+    "Re-scanning the whole board in safe() instead of keeping O(1) occupied-column/diagonal sets.",
+  ],
+  interview: [
+    "\"N-Queens I & II\" — print the boards / count the solutions.",
+    "\"Sudoku solver\" — identical skeleton, different safe().",
+    "\"Generate parentheses / word search\" — the same place-recurse-undo pattern.",
+  ],
   legend: [
     ["--c-compare", "trying this square"],
     ["--c-active", "attacked / conflict"],

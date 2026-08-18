@@ -45,6 +45,32 @@ export const stackOps: TextTopic<StackState> = {
     label: "Operations",
     defaultValue: "push 4, push 9, push 2, pop, push 7, peek, pop, pop",
   },
+  codeAlt: {
+    javascript: [
+      "class Stack {",
+      "  #items = [];",
+      "  push(x) {",
+      "    this.#items.push(x);",
+      "  }",
+      "  pop() {",
+      "    return this.#items.pop();",
+      "  }",
+      "  peek() {",
+      "    return this.#items.at(-1);",
+      "  }",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Popping without an isEmpty check — underflow throws (Java) or silently returns undefined (JS).",
+    "Confusing peek with pop and 'reading' the top destructively.",
+    "Implementing a stack on a linked list's tail — push/pop become O(n); use the head.",
+  ],
+  interview: [
+    "\"Valid parentheses\" — the canonical stack warm-up.",
+    "\"Min stack\" — O(1) getMin via a second stack of minimums.",
+    "\"Daily temperatures / next greater element\" — the monotonic stack family.",
+  ],
   legend: [
     ["--c-done", "pushed"],
     ["--c-active", "popping"],

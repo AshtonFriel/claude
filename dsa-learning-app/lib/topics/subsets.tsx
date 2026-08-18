@@ -41,6 +41,31 @@ export const subsets: NumsTopic<CellsState> = {
     "}",
   ],
   inputs: { kind: "nums", label: "Elements", defaultValue: "1, 2, 3", max: 4, allowDup: false },
+  codeAlt: {
+    javascript: [
+      "function subsets(a, i = 0,",
+      "    cur = [], out = []) {",
+      "  if (i === a.length) {",
+      "    out.push([...cur]);",
+      "    return;",
+      "  }",
+      "  cur.push(a[i]);                // include a[i]",
+      "  subsets(a, i + 1, cur, out);",
+      "  cur.pop();                     // exclude a[i]",
+      "  subsets(a, i + 1, cur, out);",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Recording `cur` itself instead of a copy — every entry in the output ends up aliasing the same (finally empty) list.",
+    "Forgetting the pop/backtrack, so the exclude branch inherits the include branch's element.",
+    "Calling it on n = 30 'just to see' — 2³⁰ subsets is a billion; know the size before you enumerate.",
+  ],
+  interview: [
+    "\"Subsets I & II\" — the power set, then with duplicate handling.",
+    "\"Combination sum\" — the include branch can repeat an element.",
+    "\"Letter combinations of a phone number\" — the same tree with k-way branching.",
+  ],
   legend: [
     ["--c-done", "included in current subset"],
     ["--c-compare", "deciding this element"],

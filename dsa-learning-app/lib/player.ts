@@ -15,6 +15,8 @@ export interface Player<S> {
   stepBack(): void;
   toStart(): void;
   toEnd(): void;
+  /** Jump straight to a step (timeline scrubbing). Pauses playback. */
+  goTo(i: number): void;
 }
 
 /** Generic step engine: drives any topic's precomputed step list. */
@@ -63,6 +65,13 @@ export function usePlayer<S>(steps: Step<S>[]): Player<S> {
     setPlaying(false);
     setIdx(len - 1);
   }, [len]);
+  const goTo = useCallback(
+    (i: number) => {
+      setPlaying(false);
+      setIdx(Math.max(0, Math.min(i, len - 1)));
+    },
+    [len],
+  );
 
   return {
     step: steps[Math.min(idx, len - 1)],
@@ -76,5 +85,6 @@ export function usePlayer<S>(steps: Step<S>[]): Player<S> {
     stepBack,
     toStart,
     toEnd,
+    goTo,
   };
 }

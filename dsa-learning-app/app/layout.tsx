@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Atkinson_Hyperlegible, Bricolage_Grotesque, JetBrains_Mono } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import { AppShell } from "@/components/AppShell";
-import { ProgressProvider } from "@/lib/progress";
+import { PwaRegister } from "@/components/PwaRegister";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({
@@ -21,6 +21,8 @@ const mono = JetBrains_Mono({
   variable: "--font-mono-src",
 });
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 export const metadata: Metadata = {
   title: {
     default: "Algorithm Atlas",
@@ -28,6 +30,7 @@ export const metadata: Metadata = {
   },
   description:
     "Learn data structures & algorithms by watching them run: step-by-step visualizers with synced code, custom input, quizzes, and progress tracking.",
+  manifest: `${basePath}/manifest.webmanifest`,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -35,10 +38,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" suppressHydrationWarning className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body>
         <ThemeProvider attribute="data-theme" defaultTheme="system" enableSystem>
-          <ProgressProvider>
-            <AppShell>{children}</AppShell>
-          </ProgressProvider>
+          <AppShell>{children}</AppShell>
         </ThemeProvider>
+        <PwaRegister />
       </body>
     </html>
   );

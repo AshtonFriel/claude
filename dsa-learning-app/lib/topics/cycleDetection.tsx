@@ -46,6 +46,30 @@ export const cycleDetection: NumsTopic<ListState> = {
     allowDup: false,
     extraField: { label: "Loop to #", defaultValue: "2" },
   },
+  codeAlt: {
+    javascript: [
+      "function hasCycle(head) {",
+      "  let slow = head;",
+      "  let fast = head;",
+      "  while (fast !== null && fast.next !== null) {",
+      "    slow = slow.next;",
+      "    fast = fast.next.next;",
+      "    if (slow === fast) return true;",
+      "  }",
+      "  return false;",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Checking only fast !== null — fast.next.next then throws on the last node of an acyclic list.",
+    "Comparing node values instead of node references; duplicate values give false positives.",
+    "Testing slow === fast before moving them — they start equal at head, so it returns true instantly.",
+  ],
+  interview: [
+    "\"Linked list cycle II\" — after they meet, reset one pointer to head; they meet again at the cycle start.",
+    "\"Find the duplicate number\" — treat the array as a linked list, run Floyd on it.",
+    "\"Happy number\" — cycle detection over the digit-square-sum sequence.",
+  ],
   legend: [
     ["--c-compare", "slow (1×)"],
     ["--c-active", "fast (2×)"],

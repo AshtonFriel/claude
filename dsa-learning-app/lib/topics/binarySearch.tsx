@@ -1,5 +1,5 @@
 import { Cells } from "@/components/renderers/Cells";
-import { parseIntField } from "@/lib/parse";
+import { parseIntField, randomArray } from "@/lib/parse";
 import type { CellsState, NumsTopic, Step } from "@/lib/types";
 
 export const binarySearch: NumsTopic<CellsState> = {
@@ -47,6 +47,32 @@ export const binarySearch: NumsTopic<CellsState> = {
     allowDup: false,
     extraField: { label: "Target", defaultValue: "37" },
   },
+  codeAlt: {
+    javascript: [
+      "function binarySearch(a, target) {",
+      "  let lo = 0;",
+      "  let hi = a.length - 1;",
+      "  while (lo <= hi) {",
+      "    const mid = (lo + hi) >> 1;",
+      "    if (a[mid] === target) return mid;",
+      "    if (a[mid] < target) lo = mid + 1;",
+      "    else hi = mid - 1;",
+      "  }",
+      "  return -1;",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Writing lo < hi and never checking the final one-element range.",
+    "Setting lo = mid or hi = mid (instead of mid ± 1) — the range stops shrinking and the loop spins forever.",
+    "In fixed-width languages, (lo + hi) / 2 can overflow — the safe form is lo + (hi − lo) / 2.",
+  ],
+  interview: [
+    "\"Search in a rotated sorted array\" — binary search with an extra which-half-is-sorted check.",
+    "\"First bad version / find the boundary\" — binary search over a predicate, not a value.",
+    "\"Koko eating bananas\" — binary search on the answer space.",
+  ],
+  chart: { sizes: [4, 8, 12, 16, 20, 24], genInput: (n) => randomArray(n), extra: () => "999" },
   legend: [
     ["--c-pointer", "lo / hi range"],
     ["--c-compare", "mid (comparing)"],

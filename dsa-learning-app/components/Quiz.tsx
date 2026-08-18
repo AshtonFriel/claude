@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useProgress } from "@/lib/progress";
+import { useAtlas } from "@/lib/store";
 import type { Topic } from "@/lib/types";
 
 export function Quiz({ topic }: { topic: Topic }) {
-  const { setDone } = useProgress();
+  const setDone = useAtlas((s) => s.setDone);
+  const recordAnswer = useAtlas((s) => s.recordAnswer);
+  const touch = useAtlas((s) => s.touch);
   const [picks, setPicks] = useState<(number | null)[]>(() => topic.quiz.map(() => null));
 
   const correct = picks.filter((p, i) => p === topic.quiz[i].answer).length;
@@ -15,6 +17,8 @@ export function Quiz({ topic }: { topic: Topic }) {
     const next = [...picks];
     next[qi] = oi;
     setPicks(next);
+    recordAnswer(topic.id, oi === topic.quiz[qi].answer);
+    touch();
     if (next.filter((p, i) => p === topic.quiz[i].answer).length === topic.quiz.length) {
       setDone(topic.id, true);
     }

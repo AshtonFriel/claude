@@ -28,13 +28,16 @@ export default function Home() {
         </li>
       </ul>
       <p>
-        Start with <b>Bubble Sort</b> for the gentlest introduction, or jump straight to{" "}
-        <b>Breadth-First Search</b> to see the queue do its thing. Your progress is saved in this
-        browser — no account needed.
+        Start with <b>Bubble Sort</b> for the gentlest introduction, race two sorts head-to-head
+        in <b>Algorithm Race</b>, or press <b>⌘K</b> to jump anywhere. Your progress is saved in
+        this browser — no account needed.
       </p>
-      <p>
-        <Link href="/topic/bubble-sort" className="run-btn inline-block no-underline">
+      <p className="welcome-ctas">
+        <Link href="/topics/sorting/bubble-sort" className="run-btn inline-block no-underline">
           Start with Bubble Sort →
+        </Link>
+        <Link href="/race" className="ghost-btn inline-block no-underline">
+          🏁 Race two algorithms
         </Link>
       </p>
     </div>

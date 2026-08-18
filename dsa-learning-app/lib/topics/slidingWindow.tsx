@@ -49,6 +49,33 @@ export const slidingWindow: NumsTopic<CellsState> = {
     max: 12,
     extraField: { label: "k", defaultValue: "3" },
   },
+  codeAlt: {
+    javascript: [
+      "function maxWindowSum(a, k) {",
+      "  let sum = 0;",
+      "  for (let i = 0; i < k; i++) sum += a[i];",
+      "  let best = sum, bestStart = 0;",
+      "  for (let r = k; r < a.length; r++) {",
+      "    sum += a[r] - a[r - k];",
+      "    if (sum > best) {",
+      "      best = sum;",
+      "      bestStart = r - k + 1;",
+      "    }",
+      "  }",
+      "  return best;",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Subtracting a[r − k + 1] instead of a[r − k] when sliding — the window silently grows.",
+    "Recomputing the whole window sum every slide, quietly reverting to O(n·k).",
+    "Forgetting to handle k larger than the array length before the first loop runs.",
+  ],
+  interview: [
+    "\"Maximum average subarray of size k\" — this algorithm verbatim.",
+    "\"Longest substring without repeating characters\" — the variable-size variant.",
+    "\"Minimum window substring\" — grow right, shrink left, track counts.",
+  ],
   legend: [
     ["--c-pointer", "current window"],
     ["--c-active", "entering"],

@@ -39,6 +39,29 @@ export const fibMemo: NumsTopic<CellsState> = {
     "}",
   ],
   inputs: { kind: "nums", label: "n", defaultValue: "8", min: 1, max: 1 },
+  codeAlt: {
+    javascript: [
+      "function fib(n, memo = []) {",
+      "  if (n <= 1) return n;",
+      "  if (memo[n] !== undefined) {",
+      "    return memo[n];        // cache hit",
+      "  }",
+      "  memo[n] = fib(n - 1, memo)",
+      "          + fib(n - 2, memo);",
+      "  return memo[n];",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Creating a fresh memo object inside every call — each branch gets its own empty cache and nothing is shared.",
+    "Checking the cache but forgetting to *write* to it after computing.",
+    "Using 0 as the 'unset' sentinel for functions that legitimately return 0 (fib(0) does!).",
+  ],
+  interview: [
+    "\"Climbing stairs\" — fib with different names.",
+    "\"House robber\" — the same take/skip recurrence one level up.",
+    "\"Coin change\" — memoization over remaining amount.",
+  ],
   legend: [
     ["--c-compare", "current call"],
     ["--c-active", "writing result"],

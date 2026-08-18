@@ -1,4 +1,5 @@
 import { Bars } from "@/components/renderers/Bars";
+import { randomArray } from "@/lib/parse";
 import type { BarsState, NumsTopic, Step } from "@/lib/types";
 import { SORT_LEGEND } from "./legends";
 
@@ -45,6 +46,60 @@ export const quickSort: NumsTopic<BarsState> = {
     "  return i;",
     "}",
   ],
+  codeAlt: {
+    javascript: [
+      "function quickSort(a, lo, hi) {",
+      "  if (lo >= hi) return;",
+      "  const p = partition(a, lo, hi);",
+      "  quickSort(a, lo, p - 1);",
+      "  quickSort(a, p + 1, hi);",
+      "}",
+      "function partition(a, lo, hi) {",
+      "  const pivot = a[hi];",
+      "  let i = lo;",
+      "  for (let j = lo; j < hi; j++) {",
+      "    if (a[j] < pivot) {",
+      "      swap(a, i, j);",
+      "      i++;",
+      "    }",
+      "  }",
+      "  swap(a, i, hi);",
+      "  return i;",
+      "}",
+    ],
+    python: {
+      lines: [
+        "def quick_sort(a, lo, hi):",
+        "    if lo >= hi:",
+        "        return",
+        "    p = partition(a, lo, hi)",
+        "    quick_sort(a, lo, p - 1)",
+        "    quick_sort(a, p + 1, hi)",
+        "",
+        "def partition(a, lo, hi):",
+        "    pivot = a[hi]",
+        "    i = lo",
+        "    for j in range(lo, hi):",
+        "        if a[j] < pivot:",
+        "            a[i], a[j] = a[j], a[i]",
+        "            i += 1",
+        "    a[i], a[hi] = a[hi], a[i]",
+        "    return i",
+      ],
+      map: [1, 2, 4, 5, 6, 0, 8, 9, 10, 11, 12, 13, 14, 0, 0, 15, 16, 0],
+    },
+  },
+  mistakes: [
+    "Recursing on [lo..p] instead of [lo..p−1] — the pivot is final, re-including it causes infinite recursion on duplicates.",
+    "Forgetting the final swap that places the pivot at the boundary — the partition silently does nothing.",
+    "Always picking the first/last element as pivot in production code, inviting the O(n²) sorted-input worst case (use random or median-of-three).",
+  ],
+  interview: [
+    "\"Find the k-th largest element\" — quickselect is one partition call recursed on a single side, O(n) average.",
+    "\"Sort colors / Dutch national flag\" — a 3-way partition variant.",
+    "\"Why does your library sort switch to heapsort sometimes?\" (introsort's O(n²) safeguard).",
+  ],
+  chart: { sizes: [4, 8, 12, 16, 20, 24], genInput: (n) => randomArray(n) },
   inputs: { kind: "nums", label: "Array", defaultValue: "33, 76, 12, 51, 8, 44, 27" },
   legend: SORT_LEGEND,
   renderer: Bars,

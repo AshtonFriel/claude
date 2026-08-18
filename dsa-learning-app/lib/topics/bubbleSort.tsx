@@ -1,4 +1,5 @@
 import { Bars } from "@/components/renderers/Bars";
+import { randomArray } from "@/lib/parse";
 import type { BarsState, NumsTopic, Step } from "@/lib/types";
 import { SORT_LEGEND } from "./legends";
 
@@ -40,6 +41,51 @@ export const bubbleSort: NumsTopic<BarsState> = {
     "  return a;",
     "}",
   ],
+  codeAlt: {
+    javascript: [
+      "function bubbleSort(a) {",
+      "  const n = a.length;",
+      "  for (let i = 0; i < n - 1; i++) {",
+      "    let swapped = false;",
+      "    for (let j = 0; j < n - 1 - i; j++) {",
+      "      if (a[j] > a[j + 1]) {",
+      "        swap(a, j, j + 1);",
+      "        swapped = true;",
+      "      }",
+      "    }",
+      "    if (!swapped) break;",
+      "  }",
+      "  return a;",
+      "}",
+    ],
+    python: {
+      lines: [
+        "def bubble_sort(a):",
+        "    n = len(a)",
+        "    for i in range(n - 1):",
+        "        swapped = False",
+        "        for j in range(n - 1 - i):",
+        "            if a[j] > a[j + 1]:",
+        "                a[j], a[j + 1] = a[j + 1], a[j]",
+        "                swapped = True",
+        "        if not swapped:",
+        "            break",
+        "    return a",
+      ],
+      map: [1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 9, 0, 11, 0],
+    },
+  },
+  mistakes: [
+    "Looping j all the way to n − 1 instead of n − 1 − i, re-scanning the already-sorted tail every pass.",
+    "Comparing a[j] with a[j] + 1 (a value) instead of a[j + 1] (the neighbour) — a classic off-by-one typo.",
+    "Forgetting the swapped flag, turning the easy O(n) best case into O(n²) on sorted input.",
+  ],
+  interview: [
+    "\"Sort this array and explain every swap\" — warm-up screens still use it to test loop-invariant reasoning.",
+    "\"How would you detect that an array is already sorted while sorting it?\" (the early-exit flag).",
+    "\"Why is bubble sort stable, and why does that matter?\"",
+  ],
+  chart: { sizes: [4, 8, 12, 16, 20, 24], genInput: (n) => randomArray(n) },
   inputs: { kind: "nums", label: "Array", defaultValue: "29, 10, 14, 37, 13, 8, 21" },
   legend: SORT_LEGEND,
   renderer: Bars,

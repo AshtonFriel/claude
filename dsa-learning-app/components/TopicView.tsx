@@ -1,15 +1,24 @@
 "use client";
 
-import { useProgress } from "@/lib/progress";
+import { useEffect } from "react";
+import { useAtlas } from "@/lib/store";
 import { topicById } from "@/lib/topics";
+import type { NumsTopic } from "@/lib/types";
+import { ComplexityChart } from "./ComplexityChart";
 import { Quiz } from "./Quiz";
 import { Visualizer } from "./Visualizer";
 
 export function TopicView({ id }: { id: string }) {
-  const { isDone, setDone } = useProgress();
+  const done = useAtlas((s) => !!s.done[id]);
+  const setDone = useAtlas((s) => s.setDone);
+  const touch = useAtlas((s) => s.touch);
   const topic = topicById(id);
+
+  useEffect(() => {
+    touch(); // opening a topic counts toward the streak
+  }, [id, touch]);
+
   if (!topic) return null;
-  const done = isDone(id);
 
   return (
     <>
@@ -32,6 +41,37 @@ export function TopicView({ id }: { id: string }) {
       </div>
 
       <Visualizer key={id} topic={topic} />
+
+      {(topic.mistakes?.length || topic.interview?.length) && (
+        <div className="aids">
+          {topic.mistakes?.length ? (
+            <section className="card aid-card mistakes" aria-label="Common mistakes">
+              <div className="card-h">⚠ Common mistakes</div>
+              <ul>
+                {topic.mistakes.map((m, i) => (
+                  <li key={i}>{m}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {topic.interview?.length ? (
+            <section className="card aid-card" aria-label="Interview questions">
+              <div className="card-h">🎯 Interview questions that use this</div>
+              <ul>
+                {topic.interview.map((m, i) => (
+                  <li key={i}>{m}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      )}
+
+      {topic.chart && topic.inputs.kind === "nums" && (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        <ComplexityChart topic={topic as NumsTopic<any>} />
+      )}
+
       <Quiz key={`quiz-${id}`} topic={topic} />
     </>
   );

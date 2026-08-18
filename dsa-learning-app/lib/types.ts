@@ -77,6 +77,31 @@ export interface GraphInput {
 /** Legend entry: [CSS custom property holding the colour, label]. */
 export type LegendEntry = [string, string];
 
+export type CodeLang = "java" | "javascript" | "python";
+
+/**
+ * Python listing with a line map: `map[i]` is the Python line to highlight when
+ * canonical (Java) line `i + 1` executes; 0 = no highlight for that line.
+ */
+export interface PythonListing {
+  lines: string[];
+  map: number[];
+}
+
+/** Extra language listings. JavaScript listings mirror the Java line numbering exactly. */
+export interface CodeAlt {
+  javascript?: string[];
+  python?: PythonListing;
+}
+
+/** Complexity-growth chart spec: run the generator across sizes, plot steps executed. */
+export interface ChartSpec {
+  sizes: number[];
+  genInput(n: number): number[];
+  /** Value for the topic's extra field (e.g. a search target), given the input. */
+  extra?(input: number[]): string;
+}
+
 interface TopicBase<S> {
   id: string;
   category: string;
@@ -85,7 +110,12 @@ interface TopicBase<S> {
   complexity: Complexity;
   about: ReactNode;
   uses: ReactNode;
+  /** Canonical (Java) code listing; step line numbers index into this. */
   code: string[];
+  codeAlt?: CodeAlt;
+  mistakes?: string[];
+  interview?: string[];
+  chart?: ChartSpec;
   legend: LegendEntry[];
   renderer: ComponentType<{ state: S }>;
   quiz: QuizQuestion[];

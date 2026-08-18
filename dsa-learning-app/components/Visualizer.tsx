@@ -150,6 +150,17 @@ export function Visualizer({ topic }: { topic: Topic }) {
           <span>{step.desc}</span>
         </div>
 
+        <div className="timeline">
+          <input
+            type="range"
+            min={0}
+            max={Math.max(0, player.len - 1)}
+            value={player.idx}
+            aria-label="Step timeline — drag to scrub"
+            onChange={(e) => player.goTo(Number(e.target.value))}
+          />
+        </div>
+
         <div className="transport">
           <button className="t-btn" aria-label="Back to start" disabled={atStart} onClick={player.toStart}>⏮</button>
           <button className="t-btn" aria-label="Step back" disabled={atStart} onClick={player.stepBack}>⏴</button>
@@ -176,7 +187,7 @@ export function Visualizer({ topic }: { topic: Topic }) {
         </div>
       </section>
 
-      <CodePanel code={topic.code} line={step.line} />
+      <CodePanel topic={topic} line={step.line} />
     </div>
   );
 }

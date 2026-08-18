@@ -1,5 +1,5 @@
 import { Cells } from "@/components/renderers/Cells";
-import { parseIntField } from "@/lib/parse";
+import { parseIntField, randomArray } from "@/lib/parse";
 import type { CellsState, NumsTopic, Step } from "@/lib/types";
 
 export const linearSearch: NumsTopic<CellsState> = {
@@ -42,6 +42,29 @@ export const linearSearch: NumsTopic<CellsState> = {
     max: 12,
     extraField: { label: "Target", defaultValue: "42" },
   },
+  codeAlt: {
+    javascript: [
+      "function linearSearch(a, target) {",
+      "  for (let i = 0; i < a.length; i++) {",
+      "    if (a[i] === target) {",
+      "      return i;",
+      "    }",
+      "  }",
+      "  return -1;",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Returning i after the loop instead of −1 — i is out of range there.",
+    "Reaching for binary search on unsorted data 'because it's faster' — it returns garbage without sorted input.",
+    "Scanning when the caller does thousands of lookups — build a hash set once instead.",
+  ],
+  interview: [
+    "Rarely asked alone — but it's the honest baseline you compare optimized answers against.",
+    "\"When would you NOT use binary search?\" — this is the answer.",
+    "Hash-table bucket scans and cache lookups are linear searches in disguise.",
+  ],
+  chart: { sizes: [4, 8, 12, 16, 20, 24], genInput: (n) => randomArray(n), extra: () => "999" },
   legend: [
     ["--c-compare", "comparing"],
     ["--c-done", "found"],

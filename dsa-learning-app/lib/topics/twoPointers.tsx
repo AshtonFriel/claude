@@ -48,6 +48,31 @@ export const twoPointers: NumsTopic<CellsState> = {
     allowDup: false,
     extraField: { label: "Target", defaultValue: "43" },
   },
+  codeAlt: {
+    javascript: [
+      "function pairSum(a, target) {",
+      "  let i = 0;",
+      "  let j = a.length - 1;",
+      "  while (i < j) {",
+      "    const sum = a[i] + a[j];",
+      "    if (sum === target) return [i, j];",
+      "    if (sum < target) i++;",
+      "    else j--;",
+      "  }",
+      "  return null;",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Running two pointers on unsorted data — the discard logic is only valid when the array is ordered.",
+    "Using while (i <= j) for pair problems, letting an element pair with itself.",
+    "Moving both pointers in one step 'to be faster' — you can skip right past the answer.",
+  ],
+  interview: [
+    "\"Two Sum II (sorted input)\" — this exact algorithm.",
+    "\"Container with most water\" — the same squeeze with a different scoring rule.",
+    "\"3Sum\" — sort, fix one element, two-pointer the rest.",
+  ],
   legend: [
     ["--c-pointer", "i (left)"],
     ["--c-pivot", "j (right)"],

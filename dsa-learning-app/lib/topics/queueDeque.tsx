@@ -46,6 +46,32 @@ export const queueDeque: TextTopic<CellsState> = {
     label: "Operations",
     defaultValue: "enqueue 5, enqueue 12, enqueue 3, dequeue, enqueue 8, front, dequeue",
   },
+  codeAlt: {
+    javascript: [
+      "class ArrayQueue {",
+      "  #items = [];",
+      "  enqueue(x) {",
+      "    this.#items.push(x);",
+      "  }",
+      "  dequeue() {",
+      "    return this.#items.shift();",
+      "  }",
+      "  front() {",
+      "    return this.#items[0];",
+      "  }",
+      "}",
+    ],
+  },
+  mistakes: [
+    "Using array.shift() / list.pop(0) in hot paths — O(n) per dequeue; use a ring buffer or deque.",
+    "Mixing up which end is which and accidentally building a stack.",
+    "In Java, using Stack (legacy, synchronized) or LinkedList when ArrayDeque is the right default.",
+  ],
+  interview: [
+    "\"Implement a queue using two stacks\" (and the reverse).",
+    "\"Sliding window maximum\" — the monotonic deque.",
+    "\"Design a circular queue\" — the ring buffer under ArrayDeque.",
+  ],
   legend: [
     ["--c-done", "enqueued (back)"],
     ["--c-active", "dequeuing (front)"],
